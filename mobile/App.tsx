@@ -8,15 +8,16 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
 const DEFAULT_ORIGIN = "https://imitation-star.vercel.app";
+/** Brand coral — fills notch / hole-punch / home-indicator areas. */
+const SHELL_BG = "#FF595E";
 
 function resolveStartUrl(): string {
   const fromEnv = process.env.EXPO_PUBLIC_APP_URL?.trim();
   const origin = (fromEnv || DEFAULT_ORIGIN).replace(/\/$/, "");
-  // Game-only shell: land on MainMenu with native-app chrome flags.
   return `${origin}/play?client=app`;
 }
 
@@ -34,8 +35,12 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.root} edges={["top", "left", "right", "bottom"]}>
-        <StatusBar barStyle="light-content" backgroundColor="#0c0e10" />
+      <View style={styles.root}>
+        <StatusBar
+          translucent
+          backgroundColor="transparent"
+          barStyle="light-content"
+        />
 
         {error ? (
           <View style={styles.errorBox}>
@@ -89,12 +94,12 @@ export default function App() {
             />
             {loading ? (
               <View style={styles.loading} pointerEvents="none">
-                <ActivityIndicator color="#FF595E" size="large" />
+                <ActivityIndicator color="#fff" size="large" />
               </View>
             ) : null}
           </View>
         )}
-      </SafeAreaView>
+      </View>
     </SafeAreaProvider>
   );
 }
@@ -102,27 +107,28 @@ export default function App() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#0c0e10",
+    backgroundColor: SHELL_BG,
   },
   webWrap: {
     flex: 1,
-    position: "relative",
+    backgroundColor: SHELL_BG,
   },
   webview: {
     flex: 1,
-    backgroundColor: "#0c0e10",
+    backgroundColor: "transparent",
   },
   loading: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(12,14,16,0.55)",
+    backgroundColor: "rgba(255,89,94,0.85)",
   },
   errorBox: {
     flex: 1,
     padding: 24,
     justifyContent: "center",
     gap: 12,
+    backgroundColor: SHELL_BG,
   },
   errorTitle: {
     color: "#fff",
@@ -131,11 +137,11 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   errorBody: {
-    color: "#FF595E",
+    color: "#111",
     fontSize: 14,
   },
   errorHint: {
-    color: "#8b929a",
+    color: "rgba(255,255,255,0.85)",
     fontSize: 12,
     lineHeight: 18,
   },
@@ -144,7 +150,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingVertical: 10,
     paddingHorizontal: 16,
-    backgroundColor: "#FF595E",
+    backgroundColor: "#111",
     borderWidth: 2,
     borderColor: "#000",
   },

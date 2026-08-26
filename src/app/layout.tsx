@@ -44,6 +44,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   themeColor: "#FF595E",
+  viewportFit: "cover",
 };
 
 /** Runs before paint so site Header never flashes in the Expo / store shell. */

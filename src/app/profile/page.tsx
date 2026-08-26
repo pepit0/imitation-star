@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import ProfileAvatar from "@/components/profile/ProfileAvatar";
 import ProfileXpBar from "@/components/profile/ProfileXpBar";
 import { ProfileTabs } from "@/components/profile/ProfileTabs";
+import { useIsNativeApp } from "@/hooks/useIsNativeApp";
 import { formatHandle } from "@/lib/handle";
 import { validateDisplayName } from "@/lib/profanity";
 import { updateProfile } from "@/app/profile/actions";
@@ -21,8 +22,10 @@ import {
 function ProfilePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isNativeApp = useIsNativeApp();
   const { user, profile, loading, refreshProfile, signOut } = useAuth();
   const [tab, setTab] = useState<"posts" | "multiplayer">("posts");
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [avatarIcon, setAvatarIcon] = useState<ProfileIconId>(DEFAULT_AVATAR_ICON);
@@ -30,6 +33,8 @@ function ProfilePageInner() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const showDetails = !isNativeApp || detailsOpen;
 
   useEffect(() => {
     const t = searchParams.get("tab");
@@ -82,7 +87,7 @@ function ProfilePageInner() {
 
   async function onSignOut() {
     await signOut();
-    router.replace("/");
+    router.replace(isNativeApp ? "/play" : "/");
     router.refresh();
   }
 
@@ -104,122 +109,152 @@ function ProfilePageInner() {
             <ProfileAvatar
               icon={avatarIcon}
               color={avatarColor}
-              name={displayName}
+              name={displayName || profile?.displayName || "?"}
               className="auth-avatar"
             />
-            <ProfileXpBar />
-          </div>
-          <h1 className="auth-card__title">Your profile</h1>
-
-          {error ? (
-            <p className="auth-card__error" role="alert">
-              {error}
-            </p>
-          ) : null}
-          {saved ? (
-            <p className="auth-card__info" role="status">
-              Profile saved.
-            </p>
-          ) : null}
-
-          <form className="auth-form" onSubmit={onSave}>
-            <fieldset className="profile-avatar-picker">
-              <legend className="profile-avatar-picker__legend">Profile icon</legend>
-              <div className="profile-avatar-picker__icons" role="list">
-                {PROFILE_ICONS.map((icon) => (
-                  <button
-                    key={icon.id}
-                    type="button"
-                    role="listitem"
-                    className={`profile-avatar-picker__icon-btn ${
-                      avatarIcon === icon.id
-                        ? "profile-avatar-picker__icon-btn--active"
-                        : ""
-                    }`}
-                    onClick={() => setAvatarIcon(icon.id)}
-                    aria-pressed={avatarIcon === icon.id}
-                    aria-label={icon.label}
-                  >
-                    <ProfileAvatar
-                      icon={icon.id}
-                      color={avatarColor}
-                      name={icon.label}
-                      className="profile-avatar-picker__icon-preview"
-                    />
-                  </button>
-                ))}
-              </div>
-              <p className="profile-avatar-picker__colors-label">Background color</p>
-              <div className="profile-avatar-picker__colors" role="list">
-                {AVATAR_COLORS.map((color) => (
-                  <button
-                    key={color.id}
-                    type="button"
-                    role="listitem"
-                    className={`profile-avatar-picker__color-btn ${
-                      avatarColor === color.value
-                        ? "profile-avatar-picker__color-btn--active"
-                        : ""
-                    }`}
-                    style={{ background: color.value }}
-                    onClick={() => setAvatarColor(color.value)}
-                    aria-pressed={avatarColor === color.value}
-                    aria-label={color.label}
-                  />
-                ))}
-              </div>
-            </fieldset>
-            <div className="auth-field auth-field--readonly">
-              <span>Handle</span>
-              <div className="auth-handle auth-handle--readonly">
-                <span className="auth-handle__at" aria-hidden="true">
-                  @
-                </span>
-                <span className="auth-handle__value">
-                  {formatHandle(profile?.handle)?.slice(1) ?? "—"}
-                </span>
-              </div>
-              <span className="auth-field__hint">
-                Set at signup — cannot be changed
-              </span>
+            <div className="profile-page__hero-meta">
+              {isNativeApp && displayName ? (
+                <p className="profile-page__hero-name">{displayName}</p>
+              ) : null}
+              <ProfileXpBar />
             </div>
-            <label className="auth-field">
-              <span>Display name</span>
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                maxLength={40}
-                required
-              />
-            </label>
-            <label className="auth-field">
-              <span>Bio</span>
-              <textarea
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                rows={3}
-                maxLength={200}
-              />
-            </label>
+          </div>
+
+          {isNativeApp ? (
             <button
-              type="submit"
-              className="brutal-btn bg-es-brand text-white w-full"
-              disabled={busy}
+              type="button"
+              className="profile-page__expand"
+              aria-expanded={detailsOpen}
+              onClick={() => setDetailsOpen((open) => !open)}
             >
-              {busy ? "Saving…" : "Save profile"}
+              {detailsOpen ? "Hide profile details" : "Edit profile"}
+              <span aria-hidden="true">{detailsOpen ? "▴" : "▾"}</span>
             </button>
-          </form>
+          ) : (
+            <h1 className="auth-card__title">Your profile</h1>
+          )}
 
-          <button
-            type="button"
-            className="brutal-btn brutal-btn-sm bg-white w-full mt-3"
-            onClick={onSignOut}
-          >
-            Sign out
-          </button>
+          {showDetails ? (
+            <div className="profile-page__details">
+              {isNativeApp ? (
+                <h1 className="auth-card__title">Your profile</h1>
+              ) : null}
 
-          <AppBackButton href="/forum">← Back to forum</AppBackButton>
+              {error ? (
+                <p className="auth-card__error" role="alert">
+                  {error}
+                </p>
+              ) : null}
+              {saved ? (
+                <p className="auth-card__info" role="status">
+                  Profile saved.
+                </p>
+              ) : null}
+
+              <form className="auth-form" onSubmit={onSave}>
+                <fieldset className="profile-avatar-picker">
+                  <legend className="profile-avatar-picker__legend">
+                    Profile icon
+                  </legend>
+                  <div className="profile-avatar-picker__icons" role="list">
+                    {PROFILE_ICONS.map((icon) => (
+                      <button
+                        key={icon.id}
+                        type="button"
+                        role="listitem"
+                        className={`profile-avatar-picker__icon-btn ${
+                          avatarIcon === icon.id
+                            ? "profile-avatar-picker__icon-btn--active"
+                            : ""
+                        }`}
+                        onClick={() => setAvatarIcon(icon.id)}
+                        aria-pressed={avatarIcon === icon.id}
+                        aria-label={icon.label}
+                      >
+                        <ProfileAvatar
+                          icon={icon.id}
+                          color={avatarColor}
+                          name={icon.label}
+                          className="profile-avatar-picker__icon-preview"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <p className="profile-avatar-picker__colors-label">
+                    Background color
+                  </p>
+                  <div className="profile-avatar-picker__colors" role="list">
+                    {AVATAR_COLORS.map((color) => (
+                      <button
+                        key={color.id}
+                        type="button"
+                        role="listitem"
+                        className={`profile-avatar-picker__color-btn ${
+                          avatarColor === color.value
+                            ? "profile-avatar-picker__color-btn--active"
+                            : ""
+                        }`}
+                        style={{ background: color.value }}
+                        onClick={() => setAvatarColor(color.value)}
+                        aria-pressed={avatarColor === color.value}
+                        aria-label={color.label}
+                      />
+                    ))}
+                  </div>
+                </fieldset>
+                <div className="auth-field auth-field--readonly">
+                  <span>Handle</span>
+                  <div className="auth-handle auth-handle--readonly">
+                    <span className="auth-handle__at" aria-hidden="true">
+                      @
+                    </span>
+                    <span className="auth-handle__value">
+                      {formatHandle(profile?.handle)?.slice(1) ?? "—"}
+                    </span>
+                  </div>
+                  <span className="auth-field__hint">
+                    Set at signup — cannot be changed
+                  </span>
+                </div>
+                <label className="auth-field">
+                  <span>Display name</span>
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    maxLength={40}
+                    required
+                  />
+                </label>
+                <label className="auth-field">
+                  <span>Bio</span>
+                  <textarea
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    rows={3}
+                    maxLength={200}
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="brutal-btn bg-es-brand text-white w-full"
+                  disabled={busy}
+                >
+                  {busy ? "Saving…" : "Save profile"}
+                </button>
+              </form>
+
+              <button
+                type="button"
+                className="brutal-btn brutal-btn-sm bg-white w-full mt-3"
+                onClick={onSignOut}
+              >
+                Sign out
+              </button>
+
+              <AppBackButton href="/forum">← Back to forum</AppBackButton>
+            </div>
+          ) : null}
         </div>
 
         <ProfileTabs authorId={user.id} tab={tab} onTabChange={setTab} />
