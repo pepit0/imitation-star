@@ -1321,6 +1321,80 @@ html[data-native-app="1"] .collab-recording--done {
   border-bottom: 1px solid #2a333b;
 }
 
+.pm-status-bar--progress {
+  padding-bottom: 0.45rem;
+}
+
+.pm-status-bar__row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.pm-status-bar__ring {
+  position: relative;
+  flex: 0 0 auto;
+  width: 1.35rem;
+  height: 1.35rem;
+  display: grid;
+  place-items: center;
+}
+
+.pm-status-bar__ring svg {
+  display: block;
+  transform: rotate(-90deg);
+}
+
+.pm-status-bar__ring-track {
+  fill: none;
+  stroke: #2a333b;
+  stroke-width: 2.5;
+}
+
+.pm-status-bar__ring-fill {
+  fill: none;
+  stroke: #8ac926;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.28s ease;
+}
+
+.pm-status-bar__pct {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 7px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: #e8eaed;
+  line-height: 1;
+}
+
+.pm-status-bar__msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.pm-status-bar__track {
+  margin-top: 0.3rem;
+  height: 3px;
+  border-radius: 999px;
+  background: #10161b;
+  border: 1px solid #2a333b;
+  overflow: hidden;
+}
+
+.pm-status-bar__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2a9d8f, #8ac926);
+  transition: width 0.28s ease;
+}
+
 .pm-field-hint {
   margin: 0.35rem 0 0;
   font-size: 10px;

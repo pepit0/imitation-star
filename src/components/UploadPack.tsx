@@ -41,6 +41,67 @@ import PackMakerVideo, {
 /** Local editor only — no server upload until publish. */
 const LOCAL_VIDEO_MAX_BYTES = 500 * 1024 * 1024;
 
+const STATUS_RING_R = 9;
+const STATUS_RING_C = 2 * Math.PI * STATUS_RING_R;
+
+function PackMakerStatusBar({
+  message,
+  progress = -1,
+}: {
+  message: string;
+  progress?: number;
+}) {
+  const showMeter = progress >= 0;
+  const pct = Math.round(Math.max(0, Math.min(100, progress)));
+  return (
+    <div
+      className={`pm-status-bar${showMeter ? " pm-status-bar--progress" : ""}`}
+      role={showMeter ? "progressbar" : "status"}
+      aria-live="polite"
+      aria-busy={showMeter && pct < 100 ? true : undefined}
+      aria-valuemin={showMeter ? 0 : undefined}
+      aria-valuemax={showMeter ? 100 : undefined}
+      aria-valuenow={showMeter ? pct : undefined}
+      aria-label={showMeter ? `${message} (${pct}%)` : undefined}
+    >
+      <div className="pm-status-bar__row">
+        {showMeter ? (
+          <span className="pm-status-bar__ring" aria-hidden>
+            <svg viewBox="0 0 24 24" width="20" height="20">
+              <circle
+                cx="12"
+                cy="12"
+                r={STATUS_RING_R}
+                className="pm-status-bar__ring-track"
+              />
+              <circle
+                cx="12"
+                cy="12"
+                r={STATUS_RING_R}
+                className="pm-status-bar__ring-fill"
+                style={{
+                  strokeDasharray: STATUS_RING_C,
+                  strokeDashoffset: STATUS_RING_C * (1 - pct / 100),
+                }}
+              />
+            </svg>
+            <span className="pm-status-bar__pct">{pct}</span>
+          </span>
+        ) : null}
+        <span className="pm-status-bar__msg">{message}</span>
+      </div>
+      {showMeter ? (
+        <div className="pm-status-bar__track" aria-hidden>
+          <div
+            className="pm-status-bar__fill"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 interface UploadPackProps {
   onBack: () => void;
   onSaved: (pack: DubPack) => void;
@@ -150,6 +211,9 @@ export default function UploadPack({
   /** False until MP4/video metadata is ready (or OGV fallback mounts). */
   const [videoFrameReady, setVideoFrameReady] = useState(false);
   const transcodeAbortRef = useRef<AbortController | null>(null);
+  const progressClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const [lineRefByClipId, setLineRefByClipId] = useState<Record<string, Blob>>(
     {}
   );
@@ -207,6 +271,15 @@ export default function UploadPack({
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [objectUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (progressClearTimerRef.current) {
+        clearTimeout(progressClearTimerRef.current);
+      }
+      transcodeAbortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -506,6 +579,17 @@ export default function UploadPack({
    * Convert OGV → MP4 for the editor preview (same as before).
    * Editing stays on-device; convert is only for playable preview / publish media.
    */
+  const clearTranscodeMeterSoon = useCallback(() => {
+    if (progressClearTimerRef.current) {
+      clearTimeout(progressClearTimerRef.current);
+    }
+    progressClearTimerRef.current = setTimeout(() => {
+      setTranscodeProgress(-1);
+      setTranscodeLabel(null);
+      progressClearTimerRef.current = null;
+    }, 1400);
+  }, []);
+
   const applyMp4Preview = useCallback(
     async (mp4Blob: Blob, sourceName: string, fromCache = false) => {
       const mp4File = new File(
@@ -514,8 +598,11 @@ export default function UploadPack({
         { type: "video/mp4" }
       );
       setVideoFrameReady(false);
-      setTranscodeProgress(fromCache ? 70 : 95);
+      setTranscodeProgress(fromCache ? 82 : 96);
       setTranscodeLabel(
+        fromCache ? "Loading cached MP4 preview…" : "Finishing MP4 preview…"
+      );
+      setImportStatus(
         fromCache ? "Loading cached MP4 preview…" : "Finishing MP4 preview…"
       );
       setObjectUrl((prev) => {
@@ -530,11 +617,16 @@ export default function UploadPack({
       } catch {
         setWavePeaks([]);
       }
+      setTranscodeProgress(100);
     },
     []
   );
 
   const useLocalOgvPreview = useCallback((ogvFile: File, status: string) => {
+    if (progressClearTimerRef.current) {
+      clearTimeout(progressClearTimerRef.current);
+      progressClearTimerRef.current = null;
+    }
     setTranscodeProgress(-1);
     setTranscodeLabel(null);
     setError(null);
@@ -554,6 +646,10 @@ export default function UploadPack({
       transcodeAbortRef.current?.abort();
       const ac = new AbortController();
       transcodeAbortRef.current = ac;
+      if (progressClearTimerRef.current) {
+        clearTimeout(progressClearTimerRef.current);
+        progressClearTimerRef.current = null;
+      }
 
       // Show local OGV immediately so editing isn't blocked while preview converts.
       useLocalOgvPreview(
@@ -562,6 +658,7 @@ export default function UploadPack({
       );
       setTranscodeProgress(0);
       setTranscodeLabel("Preparing MP4 preview…");
+      setImportStatus("Preparing MP4 preview…");
 
       try {
         const cacheKey = ogvProxyCacheKey(ogvFile, ogvFile.name);
@@ -570,8 +667,11 @@ export default function UploadPack({
           const head = new Uint8Array(await cached.slice(4, 8).arrayBuffer());
           const tag = String.fromCharCode(...head);
           if (tag === "ftyp") {
-            await applyMp4Preview(cached, ogvFile.name, true);
+            setTranscodeProgress(40);
             setImportStatus("Loading cached MP4 preview…");
+            await applyMp4Preview(cached, ogvFile.name, true);
+            setImportStatus("Loaded cached MP4 preview.");
+            clearTranscodeMeterSoon();
             return;
           }
         }
@@ -591,6 +691,7 @@ export default function UploadPack({
         setImportStatus(
           "MP4 preview ready — editing stays on this device until you publish."
         );
+        clearTranscodeMeterSoon();
       } catch (e) {
         if (ac.signal.aborted) return;
         // Keep the local OGV player — convert is best-effort for production large files.
@@ -611,7 +712,7 @@ export default function UploadPack({
         );
       }
     },
-    [applyMp4Preview, useLocalOgvPreview]
+    [applyMp4Preview, clearTranscodeMeterSoon, useLocalOgvPreview]
   );
 
   const applyCvImport = useCallback(
@@ -1934,9 +2035,10 @@ export default function UploadPack({
             </button>
           </div>
           {importStatus ? (
-            <p className="pm-status-bar" role="status">
-              {importStatus}
-            </p>
+            <PackMakerStatusBar
+              message={importStatus}
+              progress={transcodeProgress}
+            />
           ) : null}
           {error ? <p className="pm-error">{error}</p> : null}
         </div>
@@ -2053,14 +2155,13 @@ export default function UploadPack({
 
       {error ? <p className="pm-error pm-error-bar">{error}</p> : null}
       {importStatus && makerStep === "edit" ? (
-        <p className="pm-status-bar" role="status">
-          {importStatus}
-        </p>
+        <PackMakerStatusBar
+          message={importStatus}
+          progress={transcodeProgress}
+        />
       ) : null}
       {jobStatus && makerStep === "edit" ? (
-        <p className="pm-status-bar" role="status">
-          {jobStatus}
-        </p>
+        <PackMakerStatusBar message={jobStatus} />
       ) : null}
 
       {makerStep === "review" ? (
