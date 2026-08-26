@@ -707,33 +707,18 @@ a.brutal-btn.block {
   border-color: var(--es-black);
 }
 
-.cv-main-menu--native .cv-main-menu__title {
-  margin-top: 0.45rem;
+.cv-main-menu--native .cv-main-menu__hero-lockup {
+  align-items: center;
 }
 
-.cv-main-menu--native .cv-main-menu__title h1 {
-  font-family: var(--font-brand);
-  font-weight: 400;
-  font-size: clamp(2.75rem, 14vw, 4rem);
-  line-height: 0.9;
-  letter-spacing: 0.04em;
-  text-shadow: 3px 3px 0 var(--es-black);
-}
-
-.cv-main-menu--native .cv-menu-brand-star,
-.cv-main-menu--native .cv-menu-brand-star__word {
+.cv-main-menu--native .cv-main-menu__hero-lockup .landing-hero__brand-title {
+  font-size: clamp(1.65rem, 7.5vw, 2.15rem);
+  line-height: 0.95;
   color: var(--es-white);
-  text-shadow: 3px 3px 0 var(--es-black);
-}
-
-.cv-main-menu--native .cv-main-menu__tagline {
-  margin-top: 0.35rem;
-  font-size: 0.5625rem;
-  letter-spacing: 0.18em;
 }
 
 .cv-main-menu--native .cv-main-menu__pack {
-  margin-top: 0.55rem;
+  margin-top: 0.75rem;
   padding-top: 0;
 }
 
