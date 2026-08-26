@@ -88,12 +88,71 @@ export type TranscodeOgvOptions = {
 async function parseError(res: Response): Promise<string> {
   let detail = `Server convert failed (${res.status})`;
   try {
-    const data = (await res.json()) as { error?: string };
+    const text = await res.text();
+    const data = JSON.parse(text) as { error?: string };
     if (data.error) detail = data.error;
   } catch {
     /* ignore */
   }
   return detail;
+}
+
+/** POST FormData with real upload progress (fetch has none). */
+function postFormWithUploadProgress(
+  url: string,
+  form: FormData,
+  options: {
+    signal?: AbortSignal;
+    onUploadProgress?: (pct: number) => void;
+  }
+): Promise<Response> {
+  const { signal, onUploadProgress } = options;
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.responseType = "blob";
+
+    const onAbort = () => {
+      xhr.abort();
+      reject(new DOMException("Transcode aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable || event.total <= 0) return;
+      const pct = Math.round((event.loaded / event.total) * 100);
+      onUploadProgress?.(Math.max(0, Math.min(100, pct)));
+    };
+
+    xhr.onload = () => {
+      signal?.removeEventListener("abort", onAbort);
+      const headers = new Headers();
+      const contentType = xhr.getResponseHeader("Content-Type");
+      if (contentType) headers.set("Content-Type", contentType);
+      const encoder = xhr.getResponseHeader("X-Preview-Encoder");
+      if (encoder) headers.set("X-Preview-Encoder", encoder);
+      resolve(
+        new Response(xhr.response, {
+          status: xhr.status,
+          statusText: xhr.statusText,
+          headers,
+        })
+      );
+    };
+
+    xhr.onerror = () => {
+      signal?.removeEventListener("abort", onAbort);
+      reject(new Error("Network error while uploading OGV for conversion."));
+    };
+
+    xhr.onabort = () => {
+      signal?.removeEventListener("abort", onAbort);
+      reject(new DOMException("Transcode aborted", "AbortError"));
+    };
+
+    xhr.send(form);
+  });
 }
 
 async function transcodeViaDirectUpload(
@@ -102,26 +161,66 @@ async function transcodeViaDirectUpload(
   options: TranscodeOgvOptions
 ): Promise<Blob> {
   const { onProgress, signal } = options;
-  onProgress?.(5, "Uploading OGV for conversion…");
+  const mb = (input.size / (1024 * 1024)).toFixed(0);
+  const large = input.size > 40 * 1024 * 1024;
 
-  const form = new FormData();
-  form.append(
-    "file",
-    new File([input], inputName || "dub_video.ogv", {
-      type: input.type || "video/ogg",
-    })
+  onProgress?.(
+    2,
+    large
+      ? `Uploading ${mb} MB OGV…`
+      : "Uploading OGV for conversion…"
   );
 
-  const res = await fetch("/api/packs/convert-ogv", {
-    method: "POST",
-    body: form,
-    signal,
-  });
+  const form = new FormData();
+  // Reuse the original File when possible — wrapping a 120+ MB Blob copies RAM.
+  form.append(
+    "file",
+    input instanceof File
+      ? input
+      : new File([input], inputName || "dub_video.ogv", {
+          type: input.type || "video/ogg",
+        })
+  );
 
-  if (!res.ok) throw new Error(await parseError(res));
+  let encodePulse: ReturnType<typeof setInterval> | null = null;
+  let encodePct = 48;
 
-  onProgress?.(95, "Downloading MP4 preview…");
-  return await res.blob();
+  try {
+    const res = await postFormWithUploadProgress(
+      "/api/packs/convert-ogv",
+      form,
+      {
+        signal,
+        onUploadProgress: (uploadPct) => {
+          // Upload = 2% → 45% of overall bar
+          const mapped = 2 + Math.round((uploadPct / 100) * 43);
+          onProgress?.(
+            mapped,
+            uploadPct < 100
+              ? `Uploading ${mb} MB OGV… ${uploadPct}%`
+              : "Upload complete — encoding fast preview…"
+          );
+          if (uploadPct >= 100 && !encodePulse) {
+            encodePct = 48;
+            encodePulse = setInterval(() => {
+              encodePct = Math.min(92, encodePct + 1);
+              onProgress?.(
+                encodePct,
+                "Encoding 640p preview (this is the slow part)…"
+              );
+            }, 1200);
+          }
+        },
+      }
+    );
+
+    if (!res.ok) throw new Error(await parseError(res));
+
+    onProgress?.(94, "Downloading MP4 preview…");
+    return await res.blob();
+  } finally {
+    if (encodePulse) clearInterval(encodePulse);
+  }
 }
 
 /**
@@ -213,7 +312,7 @@ async function transcodeViaServer(
   if (input.size > serverDirectMaxBytes) {
     if (!serverStorageConvert) {
       throw new Error(
-        `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB. Large-file convert needs SUPABASE_SERVICE_ROLE_KEY on Vercel (then redeploy). Until then, use the OGV preview player or convert to MP4 offline.`
+        `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB (limit ${Math.floor(serverDirectMaxBytes / (1024 * 1024))} MB direct). On production, set SUPABASE_SERVICE_ROLE_KEY for large-file convert; locally, restart the Next server after the body-size bump. Or convert to MP4 offline.`
       );
     }
     return transcodeViaStorage(input, options);
@@ -266,19 +365,19 @@ async function transcodeViaWasm(
       "-i",
       "input.ogv",
       "-vf",
-      "scale=854:-2",
+      "fps=24,scale=640:-2:flags=fast_bilinear",
       "-c:v",
       "libx264",
       "-preset",
       "ultrafast",
       "-crf",
-      "28",
+      "32",
       "-c:a",
       "aac",
       "-b:a",
-      "96k",
-      "-movflags",
-      "+faststart",
+      "64k",
+      "-ac",
+      "1",
       "-y",
       "output.mp4",
     ]);
@@ -309,7 +408,8 @@ const WASM_FALLBACK_MAX_BYTES = 8 * 1024 * 1024;
 
 /**
  * Convert CV OGV → MP4 preview.
- * Small: direct POST. Large (e.g. 120 MB): Supabase signed upload → server FFmpeg.
+ * Localhost: direct POST up to ~250 MB (no Vercel body cap).
+ * Vercel: small direct POST; large (e.g. 120 MB) via Supabase signed upload → FFmpeg.
  */
 export async function transcodeOgvToMp4(
   input: Blob,
@@ -329,6 +429,7 @@ export async function transcodeOgvToMp4(
     throw new DOMException("Transcode aborted", "AbortError");
   }
 
+  // Always probe first so maxDirectBytes reflects localhost vs Vercel.
   const serverOk = await checkServerOgvConvertAvailable();
   let blob: Blob;
 
@@ -349,7 +450,11 @@ export async function transcodeOgvToMp4(
     );
   }
 
-  await saveBlob(cacheKey, blob);
+  try {
+    await saveBlob(cacheKey, blob);
+  } catch {
+    // Large MP4 previews can exceed IndexedDB quotas — still return the blob.
+  }
   onProgress?.(100, "MP4 preview ready");
   return blob;
 }

@@ -660,7 +660,7 @@ export default function RecordingStudio({
 
   return (
     <div className="cv-recording flex flex-col h-full min-h-0 overflow-hidden bg-es-screen text-white">
-      <div className="px-3 sm:px-4 py-2 border-b-3 border-black shrink-0">
+      <div className="app-stage-topbar px-3 sm:px-4 py-2 border-b-3 border-black shrink-0">
         <div className="flex items-start gap-2 sm:gap-3">
           <AppBackButton
             onClick={() => {

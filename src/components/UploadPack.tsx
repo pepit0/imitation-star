@@ -26,6 +26,11 @@ import {
   importCvPackZip,
   type CvImportResult,
 } from "@/lib/packImport";
+import {
+  loadCachedOgvProxy,
+  ogvProxyCacheKey,
+  transcodeOgvToMp4,
+} from "@/lib/transcodeOgv";
 import { useAuth } from "@/components/auth/AuthProvider";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import PackMakerVideo, {
@@ -139,8 +144,11 @@ export default function UploadPack({
   const [ogvWarning, setOgvWarning] = useState(false);
   const [useOgvVideo, setUseOgvVideo] = useState(false);
   const [posterUrl, setPosterUrl] = useState<string | null>(null);
-  /** False until video/OGV player reports metadata. */
+  const [transcodeProgress, setTranscodeProgress] = useState(-1);
+  const [transcodeLabel, setTranscodeLabel] = useState<string | null>(null);
+  /** False until MP4/video metadata is ready (or OGV fallback mounts). */
   const [videoFrameReady, setVideoFrameReady] = useState(false);
+  const transcodeAbortRef = useRef<AbortController | null>(null);
   const [lineRefByClipId, setLineRefByClipId] = useState<Record<string, Blob>>(
     {}
   );
@@ -226,6 +234,7 @@ export default function UploadPack({
     void checkPackJobsConfigured().then(setJobsConfigured);
     return () => {
       separateAbortRef.current?.abort();
+      transcodeAbortRef.current?.abort();
       if (dragListenersRef.current) {
         window.removeEventListener("pointermove", dragListenersRef.current.move);
         window.removeEventListener("pointerup", dragListenersRef.current.up);
@@ -267,7 +276,10 @@ export default function UploadPack({
           const type = media.videoFile.type || "";
           const isOgv = /\.ogv$/i.test(name) || type.includes("ogg");
           if (isOgv) {
-            useLocalOgvVideo(media.videoFile);
+            setFile(media.videoFile);
+            setObjectUrl(null);
+            setOgvWarning(true);
+            void runOgvTranscode(media.videoFile);
           } else {
             const url = URL.createObjectURL(media.videoFile);
             setObjectUrl((prev) => {
@@ -489,19 +501,94 @@ export default function UploadPack({
     (packKind === "voice" && clips.length > 0) ||
     (packKind === "dub" && clips.length > 0);
 
-  /** Keep OGV local in the editor — no server convert until publish. */
-  const useLocalOgvVideo = useCallback((ogvFile: File) => {
-    setUseOgvVideo(true);
-    setOgvWarning(true);
-    // Show OGV immediately — do not wait on metadata (pending opacity hid the player).
-    setVideoFrameReady(true);
-    setObjectUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return URL.createObjectURL(ogvFile);
-    });
-    setFile(ogvFile);
-    setWavePeaks([]);
-  }, []);
+  /**
+   * Convert OGV → MP4 for the editor preview (same as before).
+   * Editing stays on-device; convert is only for playable preview / publish media.
+   */
+  const applyMp4Preview = useCallback(
+    async (mp4Blob: Blob, sourceName: string, fromCache = false) => {
+      const mp4File = new File(
+        [mp4Blob],
+        sourceName.replace(/\.ogv$/i, ".mp4"),
+        { type: "video/mp4" }
+      );
+      setVideoFrameReady(false);
+      setTranscodeProgress(fromCache ? 70 : 95);
+      setTranscodeLabel(
+        fromCache ? "Loading cached MP4 preview…" : "Finishing MP4 preview…"
+      );
+      setObjectUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(mp4Blob);
+      });
+      setFile(mp4File);
+      setUseOgvVideo(false);
+      setOgvWarning(false);
+      try {
+        setWavePeaks(await extractWaveformPeaks(mp4File, { barCount: 240 }));
+      } catch {
+        setWavePeaks([]);
+      }
+    },
+    []
+  );
+
+  const runOgvTranscode = useCallback(
+    async (ogvFile: File) => {
+      transcodeAbortRef.current?.abort();
+      const ac = new AbortController();
+      transcodeAbortRef.current = ac;
+
+      setVideoFrameReady(false);
+      setUseOgvVideo(false);
+      setTranscodeProgress(0);
+      setTranscodeLabel("Checking for cached preview…");
+      setImportStatus("Preparing fast MP4 preview…");
+
+      try {
+        const cacheKey = ogvProxyCacheKey(ogvFile, ogvFile.name);
+        const cached = await loadCachedOgvProxy(cacheKey);
+        if (cached && !ac.signal.aborted) {
+          await applyMp4Preview(cached, ogvFile.name, true);
+          setImportStatus("Loading cached MP4 preview…");
+          return;
+        }
+
+        const mp4Blob = await transcodeOgvToMp4(ogvFile, ogvFile.name, {
+          signal: ac.signal,
+          onProgress: (pct, label) => {
+            setTranscodeProgress(pct);
+            setTranscodeLabel(label);
+            setImportStatus(label);
+          },
+        });
+
+        if (ac.signal.aborted) return;
+
+        await applyMp4Preview(mp4Blob, ogvFile.name, false);
+        setImportStatus("MP4 preview ready — editing stays on this device until you publish.");
+      } catch (e) {
+        if (ac.signal.aborted) return;
+        const detail =
+          e instanceof Error ? e.message : "Unknown conversion error";
+        setTranscodeProgress(-1);
+        setTranscodeLabel(null);
+        setError(null);
+        setOgvWarning(true);
+        setImportStatus(
+          `Could not build MP4 preview (${detail}). Showing OGV fallback — replace with MP4 if playback stays blank.`
+        );
+        setUseOgvVideo(true);
+        setVideoFrameReady(true);
+        setFile(ogvFile);
+        setObjectUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return URL.createObjectURL(ogvFile);
+        });
+      }
+    },
+    [applyMp4Preview]
+  );
 
   const applyCvImport = useCallback(
     async (result: CvImportResult) => {
@@ -510,6 +597,8 @@ export default function UploadPack({
       setOgvWarning(result.ogvVideo);
       setUseOgvVideo(false);
       setVideoFrameReady(false);
+      setTranscodeProgress(-1);
+      setTranscodeLabel(null);
 
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       if (posterUrl) URL.revokeObjectURL(posterUrl);
@@ -594,16 +683,11 @@ export default function UploadPack({
       if (result.videoFile) {
         setFile(result.videoFile);
         if (result.ogvVideo) {
-          useLocalOgvVideo(result.videoFile);
-          const kindLabel =
-            result.kind === "voice"
-              ? "voice pack"
-              : result.kind === "dub"
-                ? "dub pack"
-                : "pack";
+          setObjectUrl(null);
           setImportStatus(
-            `Imported ${result.clips.length} clips from Choicer Voicer ${kindLabel}. Editing locally — nothing uploads until you publish.`
+            `Imported ${result.clips.length} clips — edit now while we build a fast MP4 preview…`
           );
+          void runOgvTranscode(result.videoFile);
         } else {
           setUseOgvVideo(false);
           const url = URL.createObjectURL(result.videoFile);
@@ -644,7 +728,7 @@ export default function UploadPack({
         setReviewThumb(result.thumbBlob);
       }
     },
-    [objectUrl, clipImageUrlById, posterUrl, useLocalOgvVideo]
+    [objectUrl, clipImageUrlById, posterUrl, runOgvTranscode]
   );
 
   const onPickZip = useCallback(
@@ -685,10 +769,17 @@ export default function UploadPack({
         return;
       }
       if (objectUrl) URL.revokeObjectURL(objectUrl);
+      transcodeAbortRef.current?.abort();
+      setTranscodeProgress(-1);
+      setTranscodeLabel(null);
       setVideoFrameReady(false);
       if (isOgv) {
+        setFile(f);
+        setObjectUrl(null);
+        setUseOgvVideo(false);
+        setOgvWarning(true);
         setTitle(f.name.replace(/\.[^.]+$/, "") || "Untitled pack");
-        useLocalOgvVideo(f);
+        void runOgvTranscode(f);
       } else {
         const url = URL.createObjectURL(f);
         setFile(f);
@@ -726,11 +817,7 @@ export default function UploadPack({
       setClipImageUrlById({});
       if (posterUrl) URL.revokeObjectURL(posterUrl);
       setPosterUrl(null);
-      setImportStatus(
-        isOgv
-          ? "Editing locally with OGV preview — nothing uploads until you publish."
-          : null
-      );
+      setImportStatus(isOgv ? "Preparing fast MP4 preview…" : null);
       if (!isOgv) {
         try {
           setWavePeaks(await extractWaveformPeaks(f, { barCount: 240 }));
@@ -739,7 +826,7 @@ export default function UploadPack({
         }
       }
     },
-    [objectUrl, clipImageUrlById, posterUrl, useLocalOgvVideo]
+    [objectUrl, clipImageUrlById, posterUrl, runOgvTranscode]
   );
 
   const onMediaLoaded = useCallback(
@@ -755,9 +842,18 @@ export default function UploadPack({
       if (Number.isFinite(durationSec) && durationSec > 0) {
         setDurationMs(Math.round(durationSec * 1000));
       }
-      // Always clear the loading overlay once the player reports metadata —
-      // duration may already be known from the import timeline.
       setVideoFrameReady(true);
+      setTranscodeProgress(-1);
+      setTranscodeLabel(null);
+      setImportStatus((prev) =>
+        prev?.includes("cached") ||
+        prev?.includes("Finishing") ||
+        prev?.includes("Converting") ||
+        prev?.includes("Preparing") ||
+        prev?.includes("preview")
+          ? "MP4 preview ready."
+          : prev
+      );
     },
     [objectUrl]
   );
@@ -765,7 +861,7 @@ export default function UploadPack({
   // Safety net: if metadata events were missed, clear the overlay once the
   // media element actually has a duration / decoded frame.
   useEffect(() => {
-    if (!objectUrl || videoFrameReady) return;
+    if (!objectUrl || videoFrameReady || useOgvVideo) return;
     let cancelled = false;
     let tries = 0;
     const tick = () => {
@@ -786,7 +882,7 @@ export default function UploadPack({
       cancelled = true;
       window.clearTimeout(id);
     };
-  }, [objectUrl, videoFrameReady, onMediaLoaded]);
+  }, [objectUrl, videoFrameReady, useOgvVideo, onMediaLoaded]);
 
   const onMediaTimeUpdate = useCallback((currentSec: number) => {
     setCurrentMs(Math.round(currentSec * 1000));
@@ -2273,9 +2369,8 @@ export default function UploadPack({
           ) : (
             <>
           {(() => {
-            // OGV must never use the pending poster overlay (opacity:0 hid the player).
             const showPlaceholder =
-              !useOgvVideo && !videoFrameReady && Boolean(posterUrl);
+              !videoFrameReady && Boolean(posterUrl || transcodeLabel);
             return (
               <div
                 className={`pm-video-wrap${
@@ -2290,6 +2385,27 @@ export default function UploadPack({
                     className="pm-video pm-video--poster"
                   />
                 ) : null}
+                {showPlaceholder && transcodeLabel ? (
+                  <div className="pm-transcode-overlay">
+                    <p>{transcodeLabel}</p>
+                    <div className="pm-transcode-bar" aria-hidden>
+                      <div
+                        className="pm-transcode-bar__fill"
+                        style={{
+                          width: `${Math.max(
+                            0,
+                            Math.min(100, Math.max(transcodeProgress, 8))
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="pm-transcode-hint">
+                      {transcodeLabel.toLowerCase().includes("cached")
+                        ? "Loading your saved MP4 preview."
+                        : "You can edit clips on the timeline while this runs. Re-imports use a cached MP4 and load instantly."}
+                    </p>
+                  </div>
+                ) : null}
                 {objectUrl ? (
                   <PackMakerVideo
                     ref={mediaRef}
@@ -2298,7 +2414,7 @@ export default function UploadPack({
                     bare
                     posterUrl={null}
                     className={`pm-video${
-                      showPlaceholder ? " pm-video--pending" : ""
+                      showPlaceholder && !useOgvVideo ? " pm-video--pending" : ""
                     }`}
                     onLoadedMetadata={onMediaLoaded}
                     onTimeUpdate={onMediaTimeUpdate}

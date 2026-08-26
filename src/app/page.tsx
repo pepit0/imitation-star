@@ -2,7 +2,10 @@ import Link from "next/link";
 import LogoMark from "@/components/LogoMark";
 import PlayIcon from "@/components/PlayIcon";
 import StoreComingSoon from "@/components/StoreComingSoon";
-import { DUB_PACKS } from "@/lib/packs";
+import { getPublicDubPackCount } from "@/lib/packCounts";
+
+/** Refresh community pack totals periodically. */
+export const revalidate = 60;
 
 const STEPS = [
   {
@@ -32,8 +35,8 @@ const STEPS = [
   },
 ] as const;
 
-export default function HomePage() {
-  const packCount = DUB_PACKS.length;
+export default async function HomePage() {
+  const packCount = await getPublicDubPackCount();
 
   return (
     <>

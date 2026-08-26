@@ -1,47 +1,46 @@
-import { spawn } from "node:child_process";
-import { createReadStream, constants as fsConstants, promises as fs } from "node:fs";
+import {
+  createReadStream,
+  createWriteStream,
+  promises as fs,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
-import ffmpegStatic from "ffmpeg-static";
+import { pipeline } from "node:stream/promises";
 import { NextResponse } from "next/server";
 import { DUB_PACKS_BUCKET } from "@/lib/cloudPacks";
+import {
+  resolveFfmpegPath,
+  runFfmpegVersion,
+  runPreviewEncode,
+  getPreviewEncoder,
+} from "@/lib/ffmpegPreviewEncode";
 import { createAdminClient, hasAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 /**
- * Direct multipart POST body limit (Vercel function request body ~100 MB).
+ * Direct multipart POST body limit on Vercel (function request body ~100 MB).
  * Larger files use Supabase Storage upload + convert-by-path.
+ * Localhost has no Vercel body cap — allow up to MAX_STORAGE_BYTES directly.
  */
 export const MAX_DIRECT_BYTES = 80 * 1024 * 1024;
 
-/** Absolute ceiling for OGV convert via storage (covers ~120–200 MB CV packs). */
+/** Absolute ceiling for OGV convert (covers ~120–250 MB CV packs). */
 export const MAX_STORAGE_BYTES = 250 * 1024 * 1024;
 
-const CONVERT_PREFIX = "ogv-convert/";
+/** True when running on Vercel (stricter request body limits). */
+function isVercelRuntime(): boolean {
+  return Boolean(process.env.VERCEL);
+}
 
-const FFMPEG_FILE_ARGS = [
-  "-hide_banner",
-  "-loglevel",
-  "error",
-  "-vf",
-  "scale=854:-2",
-  "-c:v",
-  "libx264",
-  "-preset",
-  "ultrafast",
-  "-crf",
-  "28",
-  "-c:a",
-  "aac",
-  "-b:a",
-  "96k",
-  "-movflags",
-  "+faststart",
-  "-y",
-] as const;
+/** Max size accepted as a direct multipart upload on this host. */
+function maxDirectUploadBytes(): number {
+  return isVercelRuntime() ? MAX_DIRECT_BYTES : MAX_STORAGE_BYTES;
+}
+
+const CONVERT_PREFIX = "ogv-convert/";
 
 function isSafeConvertPath(storagePath: string): boolean {
   return (
@@ -51,68 +50,17 @@ function isSafeConvertPath(storagePath: string): boolean {
   );
 }
 
-async function resolveFfmpegPath(): Promise<string> {
-  const candidates = [
-    ffmpegStatic,
-    path.join(process.cwd(), "node_modules", "ffmpeg-static", "ffmpeg"),
-    path.join(process.cwd(), "node_modules", "ffmpeg-static", "ffmpeg.exe"),
-  ].filter(Boolean) as string[];
-
-  for (const candidate of candidates) {
-    try {
-      await fs.access(candidate, fsConstants.F_OK);
-      return candidate;
-    } catch {
-      /* try next */
-    }
-  }
-
-  throw new Error(
-    "FFmpeg is not available on this server. Replace OGV with MP4 or use the built-in OGV player preview."
+async function writeBlobToFile(blob: Blob, destPath: string): Promise<void> {
+  const nodeReadable = Readable.fromWeb(
+    blob.stream() as import("node:stream/web").ReadableStream
   );
-}
-
-function runFfmpegVersion(ffmpegPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(ffmpegPath, ["-version"], {
-      windowsHide: true,
-      stdio: ["ignore", "ignore", "pipe"],
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`FFmpeg probe failed with code ${code}`));
-    });
-  });
-}
-
-function runFfmpegToFile(
-  ffmpegPath: string,
-  inputPath: string,
-  outputPath: string
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      ffmpegPath,
-      ["-i", inputPath, ...FFMPEG_FILE_ARGS, outputPath],
-      { windowsHide: true, stdio: ["ignore", "ignore", "pipe"] }
-    );
-    let stderr = "";
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
-      if (stderr.length > 8000) stderr = stderr.slice(-8000);
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(stderr.trim() || `FFmpeg exited with code ${code}`));
-    });
-  });
+  await pipeline(nodeReadable, createWriteStream(destPath));
 }
 
 function streamFileResponse(
   filePath: string,
-  onFinished: () => void
+  onFinished: () => void,
+  extraHeaders?: Record<string, string>
 ): NextResponse {
   const nodeStream = createReadStream(filePath);
   nodeStream.on("close", onFinished);
@@ -126,6 +74,7 @@ function streamFileResponse(
       "Content-Type": "video/mp4",
       "Content-Disposition": 'inline; filename="preview.mp4"',
       "Cache-Control": "no-store",
+      ...extraHeaders,
     },
   });
 }
@@ -136,32 +85,41 @@ async function convertPathToMp4Response(
   tmpDir: string
 ): Promise<NextResponse> {
   const outputPath = path.join(tmpDir, "output.mp4");
-  await runFfmpegToFile(ffmpegPath, inputPath, outputPath);
+  // Skip duration probe — an extra FFmpeg pass isn't worth it for progress alone.
+  const encoder = await runPreviewEncode(ffmpegPath, inputPath, outputPath);
 
   const cleanup = () => {
     void fs.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   };
 
-  return streamFileResponse(outputPath, cleanup);
+  return streamFileResponse(outputPath, cleanup, {
+    "X-Preview-Encoder": encoder,
+  });
 }
 
 /** Probe: FFmpeg + whether large (storage) converts are available. */
 export async function GET() {
+  const maxDirectBytes = maxDirectUploadBytes();
   try {
     const ffmpegPath = await resolveFfmpegPath();
     await runFfmpegVersion(ffmpegPath);
+    const encoder = await getPreviewEncoder(ffmpegPath);
     return NextResponse.json({
       available: true,
-      maxDirectBytes: MAX_DIRECT_BYTES,
+      maxDirectBytes,
       maxBytes: MAX_STORAGE_BYTES,
       storageConvert: hasAdminClient(),
+      localDirectLarge: !isVercelRuntime(),
+      previewEncoder: encoder,
+      previewProfile: "640p24-fast",
     });
   } catch {
     return NextResponse.json({
       available: false,
-      maxDirectBytes: MAX_DIRECT_BYTES,
+      maxDirectBytes,
       maxBytes: MAX_STORAGE_BYTES,
       storageConvert: false,
+      localDirectLarge: !isVercelRuntime(),
     });
   }
 }
@@ -170,8 +128,8 @@ export async function GET() {
  * Convert Choicer Voicer OGV → MP4.
  *
  * Modes:
- * 1) multipart `file` — direct upload (≤ ~80 MB)
- * 2) JSON `{ action: "prepare-upload" }` — signed URL for large OGV
+ * 1) multipart `file` — direct upload (≤ ~80 MB on Vercel, ≤ ~250 MB on localhost)
+ * 2) JSON `{ action: "prepare-upload" }` — signed URL for large OGV (Vercel)
  * 3) JSON `{ storagePath }` — convert a previously uploaded temp OGV
  */
 export async function POST(request: Request) {
@@ -273,8 +231,7 @@ export async function POST(request: Request) {
         );
       }
 
-      const bytes = Buffer.from(await blob.arrayBuffer());
-      await fs.writeFile(inputPath, bytes);
+      await writeBlobToFile(blob, inputPath);
 
       const response = await convertPathToMp4Response(
         ffmpegPath,
@@ -282,7 +239,6 @@ export async function POST(request: Request) {
         tmp
       );
 
-      // Best-effort: remove temp OGV from storage after convert starts streaming.
       void admin.storage
         .from(DUB_PACKS_BUCKET)
         .remove([storagePath])
@@ -301,7 +257,7 @@ export async function POST(request: Request) {
     }
   }
 
-  // —— Direct multipart (smaller files) ——
+  // —— Direct multipart ——
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File)) {
@@ -310,11 +266,16 @@ export async function POST(request: Request) {
   if (file.size <= 0) {
     return NextResponse.json({ error: "Empty OGV file." }, { status: 400 });
   }
-  if (file.size > MAX_DIRECT_BYTES) {
+  const directLimit = maxDirectUploadBytes();
+  if (file.size > directLimit) {
     return NextResponse.json(
       {
-        error: `Video is ${(file.size / (1024 * 1024)).toFixed(0)} MB — use storage convert for files over ${Math.floor(MAX_DIRECT_BYTES / (1024 * 1024))} MB.`,
-        useStorage: true,
+        error: `Video is ${(file.size / (1024 * 1024)).toFixed(0)} MB — max direct upload is ${Math.floor(directLimit / (1024 * 1024))} MB.${
+          isVercelRuntime()
+            ? " Use storage convert for larger files, or convert to MP4 offline."
+            : ""
+        }`,
+        useStorage: isVercelRuntime(),
       },
       { status: 413 }
     );
@@ -324,8 +285,7 @@ export async function POST(request: Request) {
   const inputPath = path.join(tmp, "input.ogv");
 
   try {
-    const bytes = Buffer.from(await file.arrayBuffer());
-    await fs.writeFile(inputPath, bytes);
+    await writeBlobToFile(file, inputPath);
     return await convertPathToMp4Response(ffmpegPath, inputPath, tmp);
   } catch (e) {
     await fs.rm(tmp, { recursive: true, force: true }).catch(() => undefined);

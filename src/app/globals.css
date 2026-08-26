@@ -1017,6 +1017,33 @@ html[data-native-app="1"] .cv-main-menu--native {
   padding-top: env(safe-area-inset-top, 0px);
 }
 
+/*
+ * In-game screens with a top back control (packs / single / multiplayer).
+ * Extend the bar under the cutout; pad content so the button clears the hole-punch.
+ */
+html[data-native-app="1"] .app-stage-topbar {
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+  padding-left: calc(0.75rem + env(safe-area-inset-left, 0px));
+  padding-right: calc(0.75rem + env(safe-area-inset-right, 0px));
+}
+
+html[data-native-app="1"] .pm-topbar {
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+  padding-left: calc(0.85rem + env(safe-area-inset-left, 0px));
+  padding-right: calc(0.85rem + env(safe-area-inset-right, 0px));
+}
+
+html[data-native-app="1"] .collab-setup {
+  padding-top: calc(1rem + env(safe-area-inset-top, 0px));
+  padding-left: calc(1rem + env(safe-area-inset-left, 0px));
+  padding-right: calc(1rem + env(safe-area-inset-right, 0px));
+}
+
+html[data-native-app="1"] .collab-sent,
+html[data-native-app="1"] .collab-recording--done {
+  padding-top: calc(1.5rem + env(safe-area-inset-top, 0px));
+}
+
 /* ── Recording studio controls ── */
 
 .cv-recording {

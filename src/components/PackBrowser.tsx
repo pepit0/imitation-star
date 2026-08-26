@@ -47,7 +47,7 @@ export default function PackBrowser({
 }: PackBrowserProps) {
   return (
     <div className="flex flex-col h-full bg-es-cream text-black">
-      <div className="brutal-border border-t-0 border-x-0 bg-es-brand text-white px-4 py-3 flex items-center gap-3 overflow-visible">
+      <div className="app-stage-topbar brutal-border border-t-0 border-x-0 bg-es-brand text-white px-4 py-3 flex items-center gap-3 overflow-visible">
         <AppBackButton onClick={onBack} />
         <h2 className="font-title text-sm sm:text-base uppercase tracking-wide flex-1">
           {title ?? "Dub Packs"}
