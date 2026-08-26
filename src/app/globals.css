@@ -693,6 +693,67 @@ a.brutal-btn.block {
   }
 }
 
+/* Desktop + shared coral game menu shell */
+.cv-main-menu--desktop {
+  background: var(--es-coral);
+  color: var(--es-white);
+}
+
+.cv-main-menu--desktop .cv-main-menu__brand {
+  background: var(--es-coral);
+  border-color: var(--es-black);
+}
+
+.cv-main-menu--desktop .cv-main-menu__modes {
+  background: var(--es-coral-deep);
+}
+
+.cv-main-menu--desktop .cv-main-menu__hero-lockup {
+  align-items: center;
+}
+
+.cv-main-menu--desktop .cv-main-menu__hero-eyebrow {
+  color: var(--es-pollen);
+}
+
+.cv-main-menu--desktop .landing-hero__brand-title {
+  line-height: 0.92;
+  color: var(--es-white);
+}
+
+.cv-main-menu--desktop .cv-main-menu__pack-label {
+  color: var(--es-pollen);
+}
+
+.cv-main-menu--desktop .cv-main-menu__pack-meta {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.cv-main-menu--desktop .cv-active-pack {
+  border-color: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+/* On coral shell: swap former red primary for pollen yellow */
+.cv-main-menu--desktop .cv-menu-btn-primary {
+  background: var(--es-pollen);
+  color: var(--es-black);
+}
+
+.cv-main-menu--desktop .cv-menu-btn-primary .cv-menu-btn-icon {
+  filter: none;
+}
+
+/* Former yellow multiplayer → blue so it stays distinct */
+.cv-main-menu--desktop .cv-menu-btn-warm {
+  background: var(--es-blue);
+  color: var(--es-white);
+}
+
+.cv-main-menu--desktop .cv-menu-btn-warm .cv-menu-btn-icon {
+  filter: invert(1);
+}
+
 /* Native / Expo game menu — coral shell + compact layout */
 .cv-main-menu--native {
   background: var(--es-coral);
@@ -716,6 +777,14 @@ a.brutal-btn.block {
   font-size: clamp(1.65rem, 7.5vw, 2.15rem);
   line-height: 0.95;
   color: var(--es-white);
+}
+
+.cv-main-menu--native .cv-main-menu__pack-label {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.cv-main-menu--native .cv-main-menu__pack-meta {
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .cv-main-menu--native .header-account {

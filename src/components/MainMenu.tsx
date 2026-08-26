@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import LogoMark from "@/components/LogoMark";
 import MenuModeIcon from "@/components/MenuModeIcon";
-import MenuShootingStar from "@/components/MenuShootingStar";
 import { useAuth } from "@/components/auth/AuthProvider";
 import ProfileAvatar from "@/components/profile/ProfileAvatar";
 import { useIsNativeApp } from "@/hooks/useIsNativeApp";
@@ -27,85 +26,69 @@ export default function MainMenu({
 
   return (
     <div
-      className={`flex flex-col sm:flex-row h-full retro-pixel-grid overflow-hidden${
-        isNativeApp
-          ? " cv-main-menu--native"
-          : " bg-es-screen"
+      className={`cv-main-menu flex flex-col sm:flex-row h-full retro-pixel-grid overflow-hidden${
+        isNativeApp ? " cv-main-menu--native" : " cv-main-menu--desktop"
       }`}
     >
       {/* Left — branding & active pack */}
       <div className="cv-main-menu__brand flex-1 flex flex-col p-4 sm:p-6 min-w-0 min-h-0 border-b-3 sm:border-b-0 sm:border-r-3 border-black">
-        {isNativeApp ? (
-          <div className="cv-main-menu__hero-lockup flex items-start justify-between gap-3">
-            <div className="flex items-center gap-4 min-w-0">
-              <LogoMark
-                className="w-10 h-10 object-contain shrink-0"
-                title="Imitation Star"
-              />
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-es-lilac">
-                  The voice dubbing game
-                </p>
-                <h1 className="font-brand text-2xl sm:text-3xl landing-hero__brand-title text-white">
-                  Imitation Star
-                </h1>
-              </div>
-            </div>
-
-            {!loading ? (
-              user ? (
-                <Link
-                  href="/profile"
-                  className="header-account shrink-0"
-                  title={profile?.displayName ?? "Your profile"}
-                >
-                  <ProfileAvatar
-                    icon={profile?.avatarIcon}
-                    color={profile?.avatarColor}
-                    name={profile?.displayName ?? user.email ?? "?"}
-                    className="header-account__avatar"
-                  />
-                  <span className="header-account__label">
-                    {profile?.displayName ?? "Profile"}
-                  </span>
-                </Link>
-              ) : (
-                <Link
-                  href="/login?next=/profile"
-                  className="brutal-btn brutal-btn-sm bg-white px-3 py-2 text-xs shrink-0"
-                >
-                  Sign in
-                </Link>
-              )
-            ) : null}
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-es-brand min-w-0">
-              <span className="inline-flex gap-0.5" aria-hidden="true">
-                <span className="w-1 h-3 bg-es-brand" />
-                <span className="w-1 h-3 bg-es-brand opacity-70" />
-                <span className="w-1 h-3 bg-es-brand opacity-40" />
-              </span>
-              Dub Stage
-            </div>
-
-            <div className="cv-main-menu__title mt-4 sm:mt-6">
-              <h1 className="font-title text-7xl sm:text-8xl lg:text-[7.5rem] leading-[0.85] tracking-tight uppercase">
-                <span className="text-white block">Imitation</span>
-                <span className="text-es-yellow block cv-menu-brand-star">
-                  <span className="cv-menu-brand-star__word">Star</span>
-                  <MenuShootingStar />
-                </span>
-              </h1>
-              <p className="cv-main-menu__tagline mt-3 text-[10px] sm:text-xs text-es-text-secondary uppercase tracking-[0.25em]">
-                Listen · Dub · Share · Rate
+        <div className="cv-main-menu__hero-lockup flex items-start justify-between gap-3">
+          <div className="cv-main-menu__hero-brand flex items-center gap-4 min-w-0">
+            <LogoMark
+              className={`object-contain shrink-0 ${
+                isNativeApp ? "w-10 h-10" : "w-14 h-14 sm:w-16 sm:h-16"
+              }`}
+              title="Imitation Star"
+            />
+            <div className="min-w-0">
+              <p className="cv-main-menu__hero-eyebrow text-[10px] sm:text-xs uppercase tracking-[0.2em] text-es-lilac">
+                The voice dubbing game
               </p>
+              <h1
+                className={`font-brand landing-hero__brand-title text-white ${
+                  isNativeApp
+                    ? "text-2xl sm:text-3xl"
+                    : "text-4xl sm:text-5xl lg:text-6xl"
+                }`}
+              >
+                Imitation Star
+              </h1>
             </div>
-          </>
-        )}
+          </div>
 
-        <div className={`cv-main-menu__pack ${isNativeApp ? "mt-auto" : "mt-auto pt-6"}`}>
+          {isNativeApp && !loading ? (
+            user ? (
+              <Link
+                href="/profile"
+                className="header-account shrink-0"
+                title={profile?.displayName ?? "Your profile"}
+              >
+                <ProfileAvatar
+                  icon={profile?.avatarIcon}
+                  color={profile?.avatarColor}
+                  name={profile?.displayName ?? user.email ?? "?"}
+                  className="header-account__avatar"
+                />
+                <span className="header-account__label">
+                  {profile?.displayName ?? "Profile"}
+                </span>
+              </Link>
+            ) : (
+              <Link
+                href="/login?next=/profile"
+                className="brutal-btn brutal-btn-sm bg-white px-3 py-2 text-xs shrink-0"
+              >
+                Sign in
+              </Link>
+            )
+          ) : null}
+        </div>
+
+        <div
+          className={`cv-main-menu__pack ${
+            isNativeApp ? "mt-auto" : "mt-auto pt-6"
+          }`}
+        >
           <div className="cv-active-pack">
             <div
               className="cv-active-pack-thumb overflow-hidden"
@@ -119,21 +102,13 @@ export default function MainMenu({
               />
             </div>
             <div className="min-w-0 flex-1 py-0.5">
-              <p
-                className={`text-[10px] sm:text-xs uppercase tracking-wider ${
-                  isNativeApp ? "text-white/80" : "text-es-brand"
-                }`}
-              >
+              <p className="cv-main-menu__pack-label text-[10px] sm:text-xs uppercase tracking-wider">
                 Active Pack
               </p>
               <p className="text-base sm:text-xl font-title truncate normal-case text-white mt-1 leading-tight">
                 {activePack.title}
               </p>
-              <p
-                className={`text-[11px] sm:text-sm normal-case mt-1.5 ${
-                  isNativeApp ? "text-white/75" : "text-es-text-secondary"
-                }`}
-              >
+              <p className="cv-main-menu__pack-meta text-[11px] sm:text-sm normal-case mt-1.5">
                 {activePack.lines.length} playable lines · by {activePack.creator}
               </p>
             </div>
@@ -141,10 +116,10 @@ export default function MainMenu({
         </div>
       </div>
 
-      {/* Right — mode buttons */}
+      {/* Right — mode buttons (desktop column ~1/3 wider; stage size unchanged) */}
       <div
-        className={`cv-main-menu__modes w-full sm:w-[min(42%,320px)] shrink-0 flex flex-col p-3 sm:p-4 gap-2 sm:gap-3 overflow-y-auto${
-          isNativeApp ? "" : " bg-es-darker"
+        className={`cv-main-menu__modes w-full shrink-0 flex flex-col p-3 sm:p-4 gap-2 sm:gap-3 overflow-y-auto ${
+          isNativeApp ? "" : "sm:w-[min(56%,427px)]"
         }`}
       >
         <button
