@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppBackButton from "@/components/AppBackButton";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import LegalLinks from "@/components/LegalLinks";
 import { useAuth } from "@/components/auth/AuthProvider";
 import ProfileAvatar from "@/components/profile/ProfileAvatar";
 import ProfileXpBar from "@/components/profile/ProfileXpBar";
@@ -11,6 +13,7 @@ import { useIsNativeApp } from "@/hooks/useIsNativeApp";
 import { formatHandle } from "@/lib/handle";
 import { validateDisplayName } from "@/lib/profanity";
 import { updateProfile } from "@/app/profile/actions";
+import { deleteAccount } from "@/app/profile/deleteAccount";
 import {
   AVATAR_COLORS,
   DEFAULT_AVATAR_COLOR,
@@ -33,6 +36,9 @@ function ProfilePageInner() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const showDetails = !isNativeApp || detailsOpen;
 
@@ -87,6 +93,23 @@ function ProfilePageInner() {
 
   async function onSignOut() {
     await signOut();
+    router.replace(isNativeApp ? "/play" : "/");
+    router.refresh();
+  }
+
+  async function onDeleteAccount() {
+    setDeleteBusy(true);
+    setDeleteError(null);
+
+    const result = await deleteAccount();
+    setDeleteBusy(false);
+
+    if (!result.ok) {
+      setDeleteError(result.error);
+      setDeleteOpen(false);
+      return;
+    }
+
     router.replace(isNativeApp ? "/play" : "/");
     router.refresh();
   }
@@ -235,30 +258,64 @@ function ProfilePageInner() {
                     maxLength={200}
                   />
                 </label>
-                <button
-                  type="submit"
-                  className="brutal-btn bg-es-brand text-white w-full"
-                  disabled={busy}
-                >
-                  {busy ? "Saving…" : "Save profile"}
-                </button>
-              </form>
-
               <button
-                type="button"
-                className="brutal-btn brutal-btn-sm bg-white w-full mt-3"
-                onClick={onSignOut}
+                type="submit"
+                className="brutal-btn bg-es-brand text-white w-full"
+                disabled={busy}
               >
-                Sign out
+                {busy ? "Saving…" : "Save profile"}
               </button>
+            </form>
 
               <AppBackButton href="/forum">← Back to forum</AppBackButton>
             </div>
           ) : null}
+
+          <div className="profile-page__account">
+            <p className="profile-page__account-title">Account</p>
+            {deleteError ? (
+              <p className="auth-card__error" role="alert">
+                {deleteError}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              className="brutal-btn brutal-btn-sm bg-white text-black w-full"
+              onClick={onSignOut}
+            >
+              Sign out
+            </button>
+            <button
+              type="button"
+              className="brutal-btn brutal-btn-sm profile-page__delete w-full"
+              onClick={() => {
+                setDeleteError(null);
+                setDeleteOpen(true);
+              }}
+            >
+              Delete account
+            </button>
+            <LegalLinks layout="stack" />
+          </div>
         </div>
 
         <ProfileTabs authorId={user.id} tab={tab} onTabChange={setTab} />
       </div>
+
+      {deleteOpen ? (
+        <ConfirmDialog
+          title="Delete account?"
+          message="This permanently deletes your profile, forum posts, recordings, and login. This cannot be undone."
+          confirmLabel="Delete my account"
+          tone="red"
+          busy={deleteBusy}
+          fixed
+          onConfirm={onDeleteAccount}
+          onCancel={() => {
+            if (!deleteBusy) setDeleteOpen(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

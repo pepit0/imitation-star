@@ -202,6 +202,15 @@ export default function HomePage() {
             <Link href="/how-to-play" className="landing-footer__link">
               How to Play
             </Link>
+            <Link href="/privacy" className="landing-footer__link">
+              Privacy
+            </Link>
+            <Link href="/terms" className="landing-footer__link">
+              Terms
+            </Link>
+            <Link href="/support" className="landing-footer__link">
+              Support
+            </Link>
           </nav>
           <p className="landing-footer__copy">
             © {new Date().getFullYear()} Imitation Star

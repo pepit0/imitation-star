@@ -76,7 +76,7 @@ export default function MainMenu({
             ) : (
               <Link
                 href="/login?next=/profile"
-                className="brutal-btn brutal-btn-sm bg-white px-3 py-2 text-xs shrink-0"
+                className="brutal-btn brutal-btn-sm bg-white text-black px-3 py-2 text-xs shrink-0"
               >
                 Sign in
               </Link>

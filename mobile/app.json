@@ -37,7 +37,11 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "appUrl": "https://imitation-star.vercel.app"
+      "appUrl": "https://imitation-star.vercel.app",
+      "privacyPolicyUrl": "https://imitation-star.vercel.app/privacy",
+      "termsOfServiceUrl": "https://imitation-star.vercel.app/terms",
+      "supportUrl": "https://imitation-star.vercel.app/support",
+      "supportEmail": "support@imitationstar.app"
     }
   }
 }

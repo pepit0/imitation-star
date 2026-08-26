@@ -1,13 +1,20 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
+import { DUB_PACKS_BUCKET } from "@/lib/cloudPacks";
 import { loadBlob, saveBlob } from "./packStore";
 
-/** Browser wasm struggles above this; prefer native FFmpeg API instead. */
-export const WASM_MAX_BYTES = 40 * 1024 * 1024;
+/** Matches convert-ogv direct multipart limit. */
+export const SERVER_DIRECT_MAX_BYTES = 80 * 1024 * 1024;
+
+/** Matches convert-ogv storage convert ceiling (~120–200 MB packs). */
+export const SERVER_MAX_BYTES = 250 * 1024 * 1024;
 
 let ffmpegInstance: FFmpeg | null = null;
 let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
 let serverFfmpegAvailable: boolean | null = null;
+let serverStorageConvert = false;
+let serverDirectMaxBytes = SERVER_DIRECT_MAX_BYTES;
+let serverMaxBytes = SERVER_MAX_BYTES;
 
 async function getFfmpeg(): Promise<FFmpeg> {
   if (ffmpegInstance?.loaded) return ffmpegInstance;
@@ -48,8 +55,20 @@ export async function checkServerOgvConvertAvailable(): Promise<boolean> {
       serverFfmpegAvailable = false;
       return false;
     }
-    const data = (await res.json()) as { available?: boolean };
+    const data = (await res.json()) as {
+      available?: boolean;
+      maxBytes?: number;
+      maxDirectBytes?: number;
+      storageConvert?: boolean;
+    };
     serverFfmpegAvailable = Boolean(data.available);
+    serverStorageConvert = Boolean(data.storageConvert);
+    if (typeof data.maxBytes === "number" && data.maxBytes > 0) {
+      serverMaxBytes = data.maxBytes;
+    }
+    if (typeof data.maxDirectBytes === "number" && data.maxDirectBytes > 0) {
+      serverDirectMaxBytes = data.maxDirectBytes;
+    }
     return serverFfmpegAvailable;
   } catch {
     serverFfmpegAvailable = false;
@@ -57,18 +76,33 @@ export async function checkServerOgvConvertAvailable(): Promise<boolean> {
   }
 }
 
+export function getServerOgvMaxBytes(): number {
+  return serverMaxBytes;
+}
+
 export type TranscodeOgvOptions = {
   onProgress?: (pct: number, label: string) => void;
   signal?: AbortSignal;
 };
 
-async function transcodeViaServer(
+async function parseError(res: Response): Promise<string> {
+  let detail = `Server convert failed (${res.status})`;
+  try {
+    const data = (await res.json()) as { error?: string };
+    if (data.error) detail = data.error;
+  } catch {
+    /* ignore */
+  }
+  return detail;
+}
+
+async function transcodeViaDirectUpload(
   input: Blob,
   inputName: string,
   options: TranscodeOgvOptions
 ): Promise<Blob> {
   const { onProgress, signal } = options;
-  onProgress?.(5, "Converting with system FFmpeg…");
+  onProgress?.(5, "Uploading OGV for conversion…");
 
   const form = new FormData();
   form.append(
@@ -84,21 +118,122 @@ async function transcodeViaServer(
     signal,
   });
 
-  if (!res.ok) {
-    let detail = `Server convert failed (${res.status})`;
-    try {
-      const data = (await res.json()) as { error?: string };
-      if (data.error) detail = data.error;
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail);
-  }
+  if (!res.ok) throw new Error(await parseError(res));
 
   onProgress?.(95, "Downloading MP4 preview…");
   return await res.blob();
 }
 
+/**
+ * Large OGV path: signed upload to Supabase → server converts from storage.
+ * Bypasses Vercel’s ~100 MB request body limit (needed for ~120 MB packs).
+ */
+async function transcodeViaStorage(
+  input: Blob,
+  options: TranscodeOgvOptions
+): Promise<Blob> {
+  const { onProgress, signal } = options;
+
+  if (input.size > serverMaxBytes) {
+    throw new Error(
+      `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB — max is ${Math.floor(serverMaxBytes / (1024 * 1024))} MB. Convert to MP4 offline or use the OGV preview player.`
+    );
+  }
+
+  onProgress?.(3, "Preparing large-file upload…");
+
+  const prepareRes = await fetch("/api/packs/convert-ogv", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "prepare-upload" }),
+    signal,
+  });
+
+  if (!prepareRes.ok) throw new Error(await parseError(prepareRes));
+
+  const prepared = (await prepareRes.json()) as {
+    storagePath: string;
+    signedUrl: string;
+    token?: string;
+  };
+
+  if (!prepared.storagePath || !prepared.signedUrl) {
+    throw new Error("Server did not return an upload URL for large OGV convert.");
+  }
+
+  onProgress?.(
+    8,
+    `Uploading ${(input.size / (1024 * 1024)).toFixed(0)} MB OGV…`
+  );
+
+  if (!prepared.token) {
+    throw new Error("Server did not return an upload token for large OGV convert.");
+  }
+
+  // Prefer Supabase helper (FormData + token query) over raw PUT.
+  const { createClient } = await import("@/lib/supabase/client");
+  const supabase = createClient();
+  const { error: uploadError } = await supabase.storage
+    .from(DUB_PACKS_BUCKET)
+    .uploadToSignedUrl(prepared.storagePath, prepared.token, input, {
+      contentType: input.type || "video/ogg",
+      upsert: false,
+    });
+
+  if (uploadError) {
+    throw new Error(
+      `Could not upload OGV to storage: ${uploadError.message}. Check Supabase storage / service role.`
+    );
+  }
+
+  if (signal?.aborted) {
+    throw new DOMException("Transcode aborted", "AbortError");
+  }
+
+  onProgress?.(45, "Converting OGV on server…");
+
+  const convertRes = await fetch("/api/packs/convert-ogv", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ storagePath: prepared.storagePath }),
+    signal,
+  });
+
+  if (!convertRes.ok) throw new Error(await parseError(convertRes));
+
+  onProgress?.(95, "Downloading MP4 preview…");
+  return await convertRes.blob();
+}
+
+async function transcodeViaServer(
+  input: Blob,
+  inputName: string,
+  options: TranscodeOgvOptions
+): Promise<Blob> {
+  if (input.size > serverDirectMaxBytes) {
+    if (!serverStorageConvert) {
+      throw new Error(
+        `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB. Large-file convert needs SUPABASE_SERVICE_ROLE_KEY on Vercel (then redeploy). Until then, use the OGV preview player or convert to MP4 offline.`
+      );
+    }
+    return transcodeViaStorage(input, options);
+  }
+
+  try {
+    return await transcodeViaDirectUpload(input, inputName, options);
+  } catch (err) {
+    // If direct upload is rejected as too large, retry via storage when available.
+    const message = err instanceof Error ? err.message : "";
+    if (serverStorageConvert && /use storage|413|too large|over \d+ MB/i.test(message)) {
+      return transcodeViaStorage(input, options);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Browser ffmpeg.wasm cannot decode OGV/Theora reliably — last resort only.
+ */
 async function transcodeViaWasm(
   input: Blob,
   options: TranscodeOgvOptions
@@ -165,15 +300,16 @@ async function transcodeViaWasm(
       await ffmpeg.deleteFile("input.ogv");
       await ffmpeg.deleteFile("output.mp4");
     } catch {
-      /* ignore cleanup errors */
+      /* ignore */
     }
   }
 }
 
+const WASM_FALLBACK_MAX_BYTES = 8 * 1024 * 1024;
+
 /**
- * Convert CV OGV dub video to a browser-friendly MP4 proxy.
- * Prefers system FFmpeg via API (same as built-in packs). Falls back to
- * ffmpeg.wasm only for smaller files.
+ * Convert CV OGV → MP4 preview.
+ * Small: direct POST. Large (e.g. 120 MB): Supabase signed upload → server FFmpeg.
  */
 export async function transcodeOgvToMp4(
   input: Blob,
@@ -198,12 +334,19 @@ export async function transcodeOgvToMp4(
 
   if (serverOk) {
     blob = await transcodeViaServer(input, inputName, options);
-  } else if (input.size > WASM_MAX_BYTES) {
-    throw new Error(
-      `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB — too large for in-browser conversion, and system FFmpeg is unavailable. Install FFmpeg or replace the video with an MP4.`
-    );
+  } else if (input.size <= WASM_FALLBACK_MAX_BYTES) {
+    onProgress?.(1, "Server FFmpeg unavailable — trying browser converter…");
+    try {
+      blob = await transcodeViaWasm(input, options);
+    } catch {
+      throw new Error(
+        "OGV conversion is unavailable on this deploy. Preview will use the OGV player — or replace the video with MP4."
+      );
+    }
   } else {
-    blob = await transcodeViaWasm(input, options);
+    throw new Error(
+      `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB and server FFmpeg is unavailable. Preview will use the OGV player — or convert to MP4 offline.`
+    );
   }
 
   await saveBlob(cacheKey, blob);

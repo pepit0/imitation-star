@@ -3,7 +3,10 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppBackButton from "@/components/AppBackButton";
+import LegalLinks from "@/components/LegalLinks";
 import { useIsNativeApp } from "@/hooks/useIsNativeApp";
+import { LEGAL_ROUTES } from "@/lib/legal";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { isValidHandle, sanitizeHandle } from "@/lib/handle";
 import { validateDisplayName } from "@/lib/profanity";
@@ -239,6 +242,14 @@ export default function LoginForm() {
                 ? "Sign in"
                 : "Create account"}
           </button>
+
+          {mode === "signup" ? (
+            <p className="auth-card__legal">
+              By creating an account, you agree to our{" "}
+              <Link href={LEGAL_ROUTES.terms}>Terms of Service</Link> and{" "}
+              <Link href={LEGAL_ROUTES.privacy}>Privacy Policy</Link>.
+            </p>
+          ) : null}
         </form>
 
         <p className="auth-card__switch">
@@ -274,6 +285,8 @@ export default function LoginForm() {
             </>
           )}
         </p>
+
+        <LegalLinks className="mt-4" layout="stack" />
 
         <AppBackButton href={isNativeApp ? "/play" : "/"}>
           {isNativeApp ? "← Game menu" : "← Back to home"}

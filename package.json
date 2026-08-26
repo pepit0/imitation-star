@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/copy-ogv.mjs && node scripts/copy-ffmpeg.mjs && next build",
-    "postinstall": "node scripts/copy-ogv.mjs && node scripts/copy-ffmpeg.mjs",
+    "postinstall": "node scripts/copy-ogv.mjs && node scripts/copy-ffmpeg.mjs && node node_modules/ffmpeg-static/install.js",
     "start": "next start",
     "lint": "eslint",
     "mobile": "npm --prefix mobile start",
@@ -18,6 +18,7 @@
     "@ffmpeg/util": "^0.12.2",
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.112.4",
+    "ffmpeg-static": "^5.3.0",
     "jszip": "^3.10.1",
     "next": "16.3.1",
     "ogv": "^1.9.0",

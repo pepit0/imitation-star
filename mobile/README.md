@@ -52,11 +52,38 @@ Bundle IDs (already set in `app.json`):
 
 - [ ] Apple Developer Program + App Store Connect app
 - [ ] Google Play Console app
-- [ ] Privacy policy URL (required for mic + accounts)
+- [x] Privacy policy URL: `https://imitation-star.vercel.app/privacy`
+- [x] Terms of service URL: `https://imitation-star.vercel.app/terms`
+- [x] Support URL + email: `https://imitation-star.vercel.app/support`, `support@imitationstar.app`
+- [x] In-app account deletion: Profile → Delete account (requires `SUPABASE_SERVICE_ROLE_KEY` on Vercel)
+- [ ] Set support email in App Store Connect / Play Console (same as above)
 - [ ] App screenshots / preview video
-- [ ] Age rating / content questionnaire
+- [ ] Age rating questionnaire (user-generated audio; suggest 12+ / Teen)
+- [ ] Google Play Data safety form (email, profile, audio recordings, user-generated content)
 - [ ] Confirm mic usage strings match App Review
 - [ ] Production web URL is live and supports `?client=app`
+
+### App Store Connect / Play Console URLs
+
+Use these when the store asks for legal links:
+
+| Field | URL |
+| --- | --- |
+| Privacy Policy | https://imitation-star.vercel.app/privacy |
+| Terms of Service | https://imitation-star.vercel.app/terms |
+| Support | https://imitation-star.vercel.app/support |
+
+### Vercel env for account deletion
+
+Add to the **echostage** Vercel project (Settings → Environment Variables):
+
+```
+SUPABASE_SERVICE_ROLE_KEY=<service role key from Supabase Dashboard → Settings → API>
+```
+
+Without this key, Delete account shows an error and users must email support.
+The same key enables **large OGV convert** (e.g. ~120 MB Choicer Voicer videos) via
+Supabase Storage signed upload — Vercel cannot accept those files in the request body.
 
 ## Notes
 

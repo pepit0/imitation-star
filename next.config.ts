@@ -1,12 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["replicate"],
+  serverExternalPackages: ["replicate", "ffmpeg-static"],
   experimental: {
     serverActions: {
-      bodySizeLimit: "200mb",
+      bodySizeLimit: "100mb",
     },
-    proxyClientMaxBodySize: "200mb",
+    proxyClientMaxBodySize: "100mb",
+  },
+  outputFileTracingIncludes: {
+    "/api/packs/convert-ogv": ["./node_modules/ffmpeg-static/ffmpeg*"],
   },
 };
 

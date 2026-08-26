@@ -26,15 +26,13 @@ import {
   importCvPackZip,
   type CvImportResult,
 } from "@/lib/packImport";
-import {
-  loadCachedOgvProxy,
-  ogvProxyCacheKey,
-  transcodeOgvToMp4,
-} from "@/lib/transcodeOgv";
 import { useAuth } from "@/components/auth/AuthProvider";
 import PackMakerVideo, {
   type PackMakerVideoHandle,
 } from "@/components/PackMakerVideo";
+
+/** Local editor only — no server upload until publish. */
+const LOCAL_VIDEO_MAX_BYTES = 500 * 1024 * 1024;
 
 interface UploadPackProps {
   onBack: () => void;
@@ -138,11 +136,8 @@ export default function UploadPack({
   const [ogvWarning, setOgvWarning] = useState(false);
   const [useOgvVideo, setUseOgvVideo] = useState(false);
   const [posterUrl, setPosterUrl] = useState<string | null>(null);
-  const [transcodeProgress, setTranscodeProgress] = useState(-1);
-  const [transcodeLabel, setTranscodeLabel] = useState<string | null>(null);
-  /** False while converting / loading cached MP4 until <video> metadata is ready. */
+  /** False until video/OGV player reports metadata. */
   const [videoFrameReady, setVideoFrameReady] = useState(false);
-  const transcodeAbortRef = useRef<AbortController | null>(null);
   const [lineRefByClipId, setLineRefByClipId] = useState<Record<string, Blob>>(
     {}
   );
@@ -228,7 +223,6 @@ export default function UploadPack({
     void checkPackJobsConfigured().then(setJobsConfigured);
     return () => {
       separateAbortRef.current?.abort();
-      transcodeAbortRef.current?.abort();
       if (dragListenersRef.current) {
         window.removeEventListener("pointermove", dragListenersRef.current.move);
         window.removeEventListener("pointerup", dragListenersRef.current.up);
@@ -266,14 +260,23 @@ export default function UploadPack({
           (!editPack.videoUrl && editPack.lines.some((l) => l.referenceAudioUrl));
 
         if (media.videoFile) {
-          const url = URL.createObjectURL(media.videoFile);
-          setObjectUrl((prev) => {
-            if (prev) URL.revokeObjectURL(prev);
-            return url;
-          });
-          setFile(media.videoFile);
+          const name = media.videoFile.name || "";
+          const type = media.videoFile.type || "";
+          const isOgv = /\.ogv$/i.test(name) || type.includes("ogg");
+          if (isOgv) {
+            useLocalOgvVideo(media.videoFile);
+          } else {
+            const url = URL.createObjectURL(media.videoFile);
+            setObjectUrl((prev) => {
+              if (prev) URL.revokeObjectURL(prev);
+              return url;
+            });
+            setFile(media.videoFile);
+            setUseOgvVideo(false);
+            setOgvWarning(false);
+            setVideoFrameReady(false);
+          }
           setPackKind("dub");
-          setVideoFrameReady(false);
         } else {
           setObjectUrl(null);
           setFile(null);
@@ -483,86 +486,18 @@ export default function UploadPack({
     (packKind === "voice" && clips.length > 0) ||
     (packKind === "dub" && clips.length > 0);
 
-  const applyMp4Preview = useCallback(
-    async (mp4Blob: Blob, sourceName: string, fromCache = false) => {
-      const mp4File = new File(
-        [mp4Blob],
-        sourceName.replace(/\.ogv$/i, ".mp4"),
-        { type: "video/mp4" }
-      );
-      setVideoFrameReady(false);
-      setTranscodeProgress(fromCache ? 70 : 95);
-      setTranscodeLabel(
-        fromCache ? "Loading cached MP4 preview…" : "Finishing MP4 preview…"
-      );
-      setObjectUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return URL.createObjectURL(mp4Blob);
-      });
-      setFile(mp4File);
-      setUseOgvVideo(false);
-      try {
-        setWavePeaks(await extractWaveformPeaks(mp4File, { barCount: 240 }));
-      } catch {
-        setWavePeaks([]);
-      }
-    },
-    []
-  );
-
-  const runOgvTranscode = useCallback(
-    async (ogvFile: File) => {
-      transcodeAbortRef.current?.abort();
-      const ac = new AbortController();
-      transcodeAbortRef.current = ac;
-
-      setVideoFrameReady(false);
-      setTranscodeProgress(0);
-      setTranscodeLabel("Checking for cached preview…");
-      setImportStatus("Preparing fast MP4 preview…");
-
-      try {
-        const cacheKey = ogvProxyCacheKey(ogvFile, ogvFile.name);
-        const cached = await loadCachedOgvProxy(cacheKey);
-        if (cached && !ac.signal.aborted) {
-          await applyMp4Preview(cached, ogvFile.name, true);
-          setImportStatus("Loading cached MP4 preview…");
-          return;
-        }
-
-        const mp4Blob = await transcodeOgvToMp4(ogvFile, ogvFile.name, {
-          signal: ac.signal,
-          onProgress: (pct, label) => {
-            setTranscodeProgress(pct);
-            setTranscodeLabel(label);
-            setImportStatus(label);
-          },
-        });
-
-        if (ac.signal.aborted) return;
-
-        await applyMp4Preview(mp4Blob, ogvFile.name, false);
-        setImportStatus("Finishing MP4 preview…");
-      } catch (e) {
-        if (ac.signal.aborted) return;
-        const detail =
-          e instanceof Error ? e.message : "Unknown conversion error";
-        setTranscodeProgress(-1);
-        setTranscodeLabel(null);
-        setError(`OGV convert failed: ${detail}`);
-        setImportStatus(
-          "Could not convert OGV — falling back to OGV player. Built-in packs work because they already ship as MP4."
-        );
-        setUseOgvVideo(true);
-        setVideoFrameReady(false);
-        setObjectUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return URL.createObjectURL(ogvFile);
-        });
-      }
-    },
-    [applyMp4Preview]
-  );
+  /** Keep OGV local in the editor — no server convert until publish. */
+  const useLocalOgvVideo = useCallback((ogvFile: File) => {
+    setUseOgvVideo(true);
+    setOgvWarning(true);
+    setVideoFrameReady(false);
+    setObjectUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(ogvFile);
+    });
+    setFile(ogvFile);
+    setWavePeaks([]);
+  }, []);
 
   const applyCvImport = useCallback(
     async (result: CvImportResult) => {
@@ -571,8 +506,6 @@ export default function UploadPack({
       setOgvWarning(result.ogvVideo);
       setUseOgvVideo(false);
       setVideoFrameReady(false);
-      setTranscodeProgress(-1);
-      setTranscodeLabel(null);
 
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       if (posterUrl) URL.revokeObjectURL(posterUrl);
@@ -657,12 +590,18 @@ export default function UploadPack({
       if (result.videoFile) {
         setFile(result.videoFile);
         if (result.ogvVideo) {
-          setObjectUrl(null);
+          useLocalOgvVideo(result.videoFile);
+          const kindLabel =
+            result.kind === "voice"
+              ? "voice pack"
+              : result.kind === "dub"
+                ? "dub pack"
+                : "pack";
           setImportStatus(
-            `Imported ${result.clips.length} clips — edit now while we build a fast MP4 preview…`
+            `Imported ${result.clips.length} clips from Choicer Voicer ${kindLabel}. Editing locally — nothing uploads until you publish.`
           );
-          void runOgvTranscode(result.videoFile);
         } else {
+          setUseOgvVideo(false);
           const url = URL.createObjectURL(result.videoFile);
           setObjectUrl(url);
           setVideoFrameReady(false);
@@ -701,7 +640,7 @@ export default function UploadPack({
         setReviewThumb(result.thumbBlob);
       }
     },
-    [objectUrl, clipImageUrlById, posterUrl, runOgvTranscode]
+    [objectUrl, clipImageUrlById, posterUrl, useLocalOgvVideo]
   );
 
   const onPickZip = useCallback(
@@ -728,29 +667,30 @@ export default function UploadPack({
       setError(null);
       if (!f) return;
       if (!f.type.startsWith("video/")) {
-        setError("Please choose an MP4 or other video file.");
+        setError("Please choose an MP4, OGV, or other video file.");
         return;
       }
-      if (f.size > UPLOAD_MAX_BYTES) {
-        setError("Video must be 95 MB or smaller.");
+      const isOgv = /\.ogv$/i.test(f.name) || f.type.includes("ogg");
+      const maxBytes = isOgv ? LOCAL_VIDEO_MAX_BYTES : UPLOAD_MAX_BYTES;
+      if (f.size > maxBytes) {
+        setError(
+          isOgv
+            ? "Video must be 500 MB or smaller for local editing."
+            : "Video must be 95 MB or smaller."
+        );
         return;
       }
       if (objectUrl) URL.revokeObjectURL(objectUrl);
-      transcodeAbortRef.current?.abort();
-      setTranscodeProgress(-1);
-      setTranscodeLabel(null);
-      const isOgv = /\.ogv$/i.test(f.name) || f.type.includes("ogg");
-      setUseOgvVideo(false);
       setVideoFrameReady(false);
       if (isOgv) {
-        setFile(f);
-        setObjectUrl(null);
         setTitle(f.name.replace(/\.[^.]+$/, "") || "Untitled pack");
-        void runOgvTranscode(f);
+        useLocalOgvVideo(f);
       } else {
         const url = URL.createObjectURL(f);
         setFile(f);
         setObjectUrl(url);
+        setUseOgvVideo(false);
+        setOgvWarning(false);
       }
       setTitle(f.name.replace(/\.[^.]+$/, "") || "Untitled pack");
       charactersRef.current = [];
@@ -780,14 +720,13 @@ export default function UploadPack({
         URL.revokeObjectURL(url);
       }
       setClipImageUrlById({});
-      setOgvWarning(false);
-      setUseOgvVideo(false);
       if (posterUrl) URL.revokeObjectURL(posterUrl);
       setPosterUrl(null);
-      setTranscodeProgress(-1);
-      setTranscodeLabel(null);
-      transcodeAbortRef.current?.abort();
-      setImportStatus(null);
+      setImportStatus(
+        isOgv
+          ? "Editing locally with OGV preview — nothing uploads until you publish."
+          : null
+      );
       if (!isOgv) {
         try {
           setWavePeaks(await extractWaveformPeaks(f, { barCount: 240 }));
@@ -796,7 +735,7 @@ export default function UploadPack({
         }
       }
     },
-    [objectUrl, clipImageUrlById, posterUrl, runOgvTranscode]
+    [objectUrl, clipImageUrlById, posterUrl, useLocalOgvVideo]
   );
 
   const onMediaLoaded = useCallback(
@@ -807,8 +746,6 @@ export default function UploadPack({
         if (objectUrl) URL.revokeObjectURL(objectUrl);
         setObjectUrl(null);
         setVideoFrameReady(false);
-        setTranscodeLabel(null);
-        setTranscodeProgress(-1);
         return;
       }
       if (Number.isFinite(durationSec) && durationSec > 0) {
@@ -817,17 +754,6 @@ export default function UploadPack({
       // Always clear the loading overlay once the player reports metadata —
       // duration may already be known from the import timeline.
       setVideoFrameReady(true);
-      setTranscodeProgress(-1);
-      setTranscodeLabel(null);
-      setImportStatus((prev) =>
-        prev?.includes("cached") ||
-        prev?.includes("Finishing") ||
-        prev?.includes("Converting") ||
-        prev?.includes("Preparing") ||
-        prev?.includes("preview")
-          ? "MP4 preview ready."
-          : prev
-      );
     },
     [objectUrl]
   );
@@ -835,7 +761,7 @@ export default function UploadPack({
   // Safety net: if metadata events were missed, clear the overlay once the
   // media element actually has a duration / decoded frame.
   useEffect(() => {
-    if (!objectUrl || videoFrameReady || useOgvVideo) return;
+    if (!objectUrl || videoFrameReady) return;
     let cancelled = false;
     let tries = 0;
     const tick = () => {
@@ -856,7 +782,7 @@ export default function UploadPack({
       cancelled = true;
       window.clearTimeout(id);
     };
-  }, [objectUrl, videoFrameReady, useOgvVideo, onMediaLoaded]);
+  }, [objectUrl, videoFrameReady, onMediaLoaded]);
 
   const onMediaTimeUpdate = useCallback((currentSec: number) => {
     setCurrentMs(Math.round(currentSec * 1000));
@@ -1773,7 +1699,7 @@ export default function UploadPack({
           <input
             ref={fileRef}
             type="file"
-            accept="video/mp4,video/webm,video/*"
+            accept="video/mp4,video/webm,video/ogg,.ogv,video/*"
             className="hidden"
             onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
           />
@@ -1903,7 +1829,7 @@ export default function UploadPack({
         <input
           ref={fileRef}
           type="file"
-          accept="video/mp4,video/webm,video/*"
+          accept="video/mp4,video/webm,video/ogg,.ogv,video/*"
           className="hidden"
           onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
         />
@@ -2265,8 +2191,7 @@ export default function UploadPack({
           ) : (
             <>
           {(() => {
-            const showPlaceholder =
-              !videoFrameReady && Boolean(posterUrl || transcodeLabel);
+            const showPlaceholder = !videoFrameReady && Boolean(posterUrl);
             return (
               <div
                 className={`pm-video-wrap${
@@ -2280,27 +2205,6 @@ export default function UploadPack({
                     alt=""
                     className="pm-video pm-video--poster"
                   />
-                ) : null}
-                {showPlaceholder && transcodeLabel ? (
-                  <div className="pm-transcode-overlay">
-                    <p>{transcodeLabel}</p>
-                    <div className="pm-transcode-bar" aria-hidden>
-                      <div
-                        className="pm-transcode-bar__fill"
-                        style={{
-                          width: `${Math.max(
-                            0,
-                            Math.min(100, Math.max(transcodeProgress, 8))
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                    <p className="pm-transcode-hint">
-                      {transcodeLabel.toLowerCase().includes("cached")
-                        ? "Loading your saved MP4 preview — frame size stays stable."
-                        : "You can edit clips on the timeline while this runs. Re-imports use a cached MP4 and load instantly."}
-                    </p>
-                  </div>
                 ) : null}
                 {objectUrl ? (
                   <PackMakerVideo
