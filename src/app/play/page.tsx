@@ -37,7 +37,11 @@ function PlayContent() {
   const fillPct = Math.round(rank.progress * 100);
 
   return (
-    <div className="h-full min-h-0 overflow-hidden bg-es-cream flex flex-col">
+    <div
+      className={`h-full min-h-0 overflow-hidden flex flex-col ${
+        isNativeApp ? "bg-es-brand" : "bg-es-cream"
+      }`}
+    >
       {!isNativeApp ? (
         <div className="play-hud shrink-0">
           <div className="play-hud__identity">

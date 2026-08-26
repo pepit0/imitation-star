@@ -693,11 +693,18 @@ a.brutal-btn.block {
   }
 }
 
-/* Native / Expo game menu — compact so modes fit one phone screen */
+/* Native / Expo game menu — coral shell + compact layout */
+.cv-main-menu--native {
+  background: var(--es-coral);
+  color: var(--es-white);
+}
+
 .cv-main-menu--native .cv-main-menu__brand {
   padding: 0.65rem 0.85rem 0.5rem;
   flex: 0 0 auto;
   max-height: 42%;
+  background: var(--es-coral);
+  border-color: var(--es-black);
 }
 
 .cv-main-menu--native .cv-main-menu__title {
@@ -705,8 +712,18 @@ a.brutal-btn.block {
 }
 
 .cv-main-menu--native .cv-main-menu__title h1 {
-  font-size: clamp(2.6rem, 13vw, 3.75rem);
-  line-height: 0.82;
+  font-family: var(--font-brand);
+  font-weight: 400;
+  font-size: clamp(2.75rem, 14vw, 4rem);
+  line-height: 0.9;
+  letter-spacing: 0.04em;
+  text-shadow: 3px 3px 0 var(--es-black);
+}
+
+.cv-main-menu--native .cv-menu-brand-star,
+.cv-main-menu--native .cv-menu-brand-star__word {
+  color: var(--es-white);
+  text-shadow: 3px 3px 0 var(--es-black);
 }
 
 .cv-main-menu--native .cv-main-menu__tagline {
@@ -724,6 +741,8 @@ a.brutal-btn.block {
   gap: 0.65rem;
   padding: 0.55rem 0.65rem;
   min-height: 0;
+  border-color: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.22);
 }
 
 .cv-main-menu--native .cv-active-pack-thumb {
@@ -747,6 +766,7 @@ a.brutal-btn.block {
   padding: 0.5rem;
   gap: 0.4rem;
   overflow: hidden;
+  background: var(--es-coral-deep);
 }
 
 .cv-main-menu--native .cv-menu-btn {

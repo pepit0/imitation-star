@@ -26,18 +26,34 @@ export default function MainMenu({
 
   return (
     <div
-      className={`flex flex-col sm:flex-row h-full bg-es-screen retro-pixel-grid overflow-hidden${
-        isNativeApp ? " cv-main-menu--native" : ""
+      className={`flex flex-col sm:flex-row h-full retro-pixel-grid overflow-hidden${
+        isNativeApp
+          ? " cv-main-menu--native"
+          : " bg-es-screen"
       }`}
     >
       {/* Left — branding & active pack */}
       <div className="cv-main-menu__brand flex-1 flex flex-col p-4 sm:p-6 min-w-0 min-h-0 border-b-3 sm:border-b-0 sm:border-r-3 border-black">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-es-brand min-w-0">
+          <div
+            className={`flex items-center gap-2 text-[10px] uppercase tracking-widest min-w-0 ${
+              isNativeApp ? "text-white/90" : "text-es-brand"
+            }`}
+          >
             <span className="inline-flex gap-0.5" aria-hidden="true">
-              <span className="w-1 h-3 bg-es-brand" />
-              <span className="w-1 h-3 bg-es-brand opacity-70" />
-              <span className="w-1 h-3 bg-es-brand opacity-40" />
+              <span
+                className={`w-1 h-3 ${isNativeApp ? "bg-white" : "bg-es-brand"}`}
+              />
+              <span
+                className={`w-1 h-3 opacity-70 ${
+                  isNativeApp ? "bg-white" : "bg-es-brand"
+                }`}
+              />
+              <span
+                className={`w-1 h-3 opacity-40 ${
+                  isNativeApp ? "bg-white" : "bg-es-brand"
+                }`}
+              />
             </span>
             Dub Stage
           </div>
@@ -71,14 +87,28 @@ export default function MainMenu({
         </div>
 
         <div className="cv-main-menu__title mt-4 sm:mt-6">
-          <h1 className="font-title text-7xl sm:text-8xl lg:text-[7.5rem] leading-[0.85] tracking-tight uppercase">
+          <h1
+            className={
+              isNativeApp
+                ? "font-brand landing-hero__brand-title text-5xl sm:text-6xl leading-[0.9] tracking-tight uppercase"
+                : "font-title text-7xl sm:text-8xl lg:text-[7.5rem] leading-[0.85] tracking-tight uppercase"
+            }
+          >
             <span className="text-white block">Imitation</span>
-            <span className="text-es-yellow block cv-menu-brand-star">
+            <span
+              className={`block cv-menu-brand-star ${
+                isNativeApp ? "text-white" : "text-es-yellow"
+              }`}
+            >
               <span className="cv-menu-brand-star__word">Star</span>
               <MenuShootingStar />
             </span>
           </h1>
-          <p className="cv-main-menu__tagline mt-3 text-[10px] sm:text-xs text-es-text-secondary uppercase tracking-[0.25em]">
+          <p
+            className={`cv-main-menu__tagline mt-3 text-[10px] sm:text-xs uppercase tracking-[0.25em] ${
+              isNativeApp ? "text-white/85" : "text-es-text-secondary"
+            }`}
+          >
             Listen · Dub · Share · Rate
           </p>
         </div>
@@ -97,13 +127,21 @@ export default function MainMenu({
               />
             </div>
             <div className="min-w-0 flex-1 py-0.5">
-              <p className="text-[10px] sm:text-xs uppercase tracking-wider text-es-brand">
+              <p
+                className={`text-[10px] sm:text-xs uppercase tracking-wider ${
+                  isNativeApp ? "text-white/80" : "text-es-brand"
+                }`}
+              >
                 Active Pack
               </p>
               <p className="text-base sm:text-xl font-title truncate normal-case text-white mt-1 leading-tight">
                 {activePack.title}
               </p>
-              <p className="text-[11px] sm:text-sm text-es-text-secondary normal-case mt-1.5">
+              <p
+                className={`text-[11px] sm:text-sm normal-case mt-1.5 ${
+                  isNativeApp ? "text-white/75" : "text-es-text-secondary"
+                }`}
+              >
                 {activePack.lines.length} playable lines · by {activePack.creator}
               </p>
             </div>
@@ -112,7 +150,11 @@ export default function MainMenu({
       </div>
 
       {/* Right — mode buttons */}
-      <div className="cv-main-menu__modes w-full sm:w-[min(42%,320px)] shrink-0 flex flex-col p-3 sm:p-4 gap-2 sm:gap-3 bg-es-darker overflow-y-auto">
+      <div
+        className={`cv-main-menu__modes w-full sm:w-[min(42%,320px)] shrink-0 flex flex-col p-3 sm:p-4 gap-2 sm:gap-3 overflow-y-auto${
+          isNativeApp ? "" : " bg-es-darker"
+        }`}
+      >
         <button
           type="button"
           onClick={() => onSelectMode("single")}

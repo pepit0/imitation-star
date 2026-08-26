@@ -253,9 +253,9 @@ export default function GameStage({
     >
       <div
         id="game-stage-container"
-        className={`brutal-border brutal-shadow bg-es-dark flex flex-col w-full min-h-0 ${
-          isScrollStage ? "pm-stage" : "overflow-hidden"
-        }`}
+        className={`brutal-border brutal-shadow flex flex-col w-full min-h-0 ${
+          isNativeApp ? "bg-es-brand" : "bg-es-dark"
+        } ${isScrollStage ? "pm-stage" : "overflow-hidden"}`}
         style={
           isScrollStage
             ? undefined
