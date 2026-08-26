@@ -36,9 +36,9 @@ export default function LoginForm() {
     setInfo(null);
     setBusy(true);
 
-    const supabase = createClient();
-
     try {
+      const supabase = createClient();
+
       if (mode === "signin") {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -113,6 +113,14 @@ export default function LoginForm() {
         "Check your email to confirm your account, then sign in. (You can also turn off email confirmation in the Supabase Auth settings while developing.)"
       );
       setMode("signin");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Sign in failed. Try again.";
+      setError(
+        message.includes("NEXT_PUBLIC_SUPABASE")
+          ? "Auth isn’t configured on this deploy. Add Supabase env vars in Vercel and redeploy."
+          : message
+      );
     } finally {
       setBusy(false);
     }
