@@ -3,6 +3,7 @@ import { Bebas_Neue, IBM_Plex_Mono } from "next/font/google";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import NativeAppBackBar from "@/components/NativeAppBackBar";
 import SiteHeader from "@/components/SiteHeader";
+import { SubscriptionProvider } from "@/components/subscription/SubscriptionProvider";
 import { NATIVE_APP_STORAGE_KEY } from "@/lib/nativeApp";
 import "./globals.css";
 
@@ -69,9 +70,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="h-full flex flex-col overflow-hidden antialiased">
         <AuthProvider>
-          <SiteHeader />
-          <NativeAppBackBar />
-          <main className="flex-1 min-h-0 overflow-y-auto">{children}</main>
+          <SubscriptionProvider>
+            <SiteHeader />
+            <NativeAppBackBar />
+            <main className="flex-1 min-h-0 overflow-y-auto">{children}</main>
+          </SubscriptionProvider>
         </AuthProvider>
       </body>
     </html>

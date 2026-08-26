@@ -25,6 +25,7 @@ import {
   listenForNativePushToken,
   registerNativePushToken,
 } from "@/lib/pushClient";
+import { syncNativeSubscriptionUser } from "@/lib/subscriptionClient";
 import { clearXpCache, refreshXp, setXpCache } from "@/lib/xp";
 
 type AuthContextValue = {
@@ -113,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return fetchProfile(user.id);
       })
       .then((next) => {
-        if (cancelled || next === undefined) return;
+        if (cancelled || !next) return;
         setProfile(next);
         if (typeof next.xp === "number") {
           setXpCache(
@@ -128,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (isNativeApp()) {
       void registerNativePushToken();
+      syncNativeSubscriptionUser(user?.id ?? null);
     }
 
     const stopListen = listenForNativePushToken();
@@ -140,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     const supabase = createClient();
+    syncNativeSubscriptionUser(null);
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import LogoMark from "@/components/LogoMark";
 import MenuModeIcon from "@/components/MenuModeIcon";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { useSubscription } from "@/components/subscription/SubscriptionProvider";
 import ProfileAvatar from "@/components/profile/ProfileAvatar";
 import { useIsNativeApp } from "@/hooks/useIsNativeApp";
 import type { PackProgressSummary } from "@/lib/packProgress";
@@ -38,6 +39,8 @@ export default function MainMenu({
   const isNativeApp = useIsNativeApp();
   const router = useRouter();
   const { user, profile, loading } = useAuth();
+  const { isPro, nativeBillingAvailable, presentPaywall, loading: subLoading } =
+    useSubscription();
 
   return (
     <div
@@ -242,6 +245,29 @@ export default function MainMenu({
             Browse all {packCount} Dub Packs
           </span>
         </button>
+
+        {isNativeApp && nativeBillingAvailable ? (
+          <button
+            type="button"
+            onClick={() => void presentPaywall()}
+            disabled={subLoading}
+            className={`cv-menu-btn flex-1 min-h-[5rem] ${
+              isPro ? "cv-menu-btn-outline" : "cv-menu-btn-star-club"
+            }`}
+          >
+            <span className="cv-menu-btn-head">
+              <MenuModeIcon mode="single" />
+              <span className="cv-menu-btn-title">
+                {isPro ? "Star Club Pro" : "Join Star Club"}
+              </span>
+            </span>
+            <span className="cv-menu-btn-sub">
+              {isPro
+                ? "You have Imitation Star Pro — tap to manage"
+                : "Unlock premium features with your dashboard paywall"}
+            </span>
+          </button>
+        ) : null}
 
         {isNativeApp ? (
           <>

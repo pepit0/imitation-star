@@ -86,9 +86,37 @@ Without this key, Delete account shows an error and users must email support.
 The same key enables **large OGV convert** (e.g. ~120 MB Choicer Voicer videos) via
 Supabase Storage signed upload — Vercel cannot accept those files in the request body.
 
+## RevenueCat (Star Club subscriptions)
+
+The native shell integrates **RevenueCat** + **RevenueCatUI** for your dashboard paywall
+(`star-subscriptions` offering → **Imitation Star Pro** entitlement).
+
+Add to `mobile/.env`:
+
+```bash
+# Test Store while App Store / Play apps are being set up
+EXPO_PUBLIC_REVENUECAT_API_KEY=test_xxxxxxxx
+
+# Production (once store apps exist in RevenueCat):
+# EXPO_PUBLIC_REVENUECAT_IOS_API_KEY=appl_xxxxxxxx
+# EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY=goog_xxxxxxxx
+```
+
+**Requires a development or store build** — RevenueCat does not run in Expo Go.
+After changing native deps:
+
+```bash
+eas build --profile development --platform ios
+# or android
+```
+
+The web layer shows **Join Star Club** on the native main menu; purchases run in the
+native paywall. Supabase user id is synced via `Purchases.logIn` on sign-in.
+
 ## Notes
 
 - **`?client=app`**: persisted in `sessionStorage` so Forum / Profile / Login keep native chrome (no site Header).
 - **Create a Dub**: disabled in the native shell; available on desktop web only.
 - **Mic**: Expo Go WebView `getUserMedia` can be limited on iOS; prefer a development or production build for recording QA.
+- **Subscriptions**: require a dev/production build (not Expo Go).
 - Do not commit `.env`.

@@ -591,6 +591,11 @@ a.brutal-btn.block {
   color: var(--es-black);
 }
 
+.cv-menu-btn-star-club {
+  background: linear-gradient(135deg, #7c3aed 0%, #ff595e 100%);
+  color: var(--es-white);
+}
+
 .cv-menu-btn-dark {
   background: var(--es-green);
   color: var(--es-black);
