@@ -1,7 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import MenuModeIcon from "@/components/MenuModeIcon";
 import MenuShootingStar from "@/components/MenuShootingStar";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { useIsNativeApp } from "@/hooks/useIsNativeApp";
 import type { DubPack, GameMode } from "@/lib/types";
 
 interface MainMenuProps {
@@ -15,6 +18,10 @@ export default function MainMenu({
   activePack,
   onSelectMode,
 }: MainMenuProps) {
+  const isNativeApp = useIsNativeApp();
+  const router = useRouter();
+  const { user } = useAuth();
+
   return (
     <div className="flex flex-col sm:flex-row h-full bg-es-screen retro-pixel-grid overflow-hidden">
       {/* Left — branding & active pack */}
@@ -116,19 +123,68 @@ export default function MainMenu({
           </span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => onSelectMode("upload")}
-          className="cv-menu-btn cv-menu-btn-outline flex-1 min-h-[5rem]"
-        >
-          <span className="cv-menu-btn-head">
-            <MenuModeIcon mode="upload" />
-            <span className="cv-menu-btn-title">Create a Dub</span>
-          </span>
-          <span className="cv-menu-btn-sub normal-case">
-            Upload a clip · mark lines · save as a pack
-          </span>
-        </button>
+        {isNativeApp ? (
+          <>
+            <button
+              type="button"
+              onClick={() => router.push("/forum")}
+              className="cv-menu-btn cv-menu-btn-outline flex-1 min-h-[5rem]"
+            >
+              <span className="cv-menu-btn-head">
+                <MenuModeIcon mode="forum" />
+                <span className="cv-menu-btn-title">Forum</span>
+              </span>
+              <span className="cv-menu-btn-sub">
+                Rate takes and see what the community posted
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                router.push(user ? "/profile" : "/login?next=/profile")
+              }
+              className="cv-menu-btn cv-menu-btn-outline flex-1 min-h-[5rem]"
+            >
+              <span className="cv-menu-btn-head">
+                <MenuModeIcon mode="profile" />
+                <span className="cv-menu-btn-title">Profile</span>
+              </span>
+              <span className="cv-menu-btn-sub">
+                {user ? "Your account, posts, and multiplayer" : "Sign in to manage your profile"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              className="cv-menu-btn cv-menu-btn-outline flex-1 min-h-[5rem] opacity-40 pointer-events-none grayscale"
+            >
+              <span className="cv-menu-btn-head">
+                <MenuModeIcon mode="upload" />
+                <span className="cv-menu-btn-title">Create a Dub</span>
+              </span>
+              <span className="cv-menu-btn-sub normal-case">
+                Create a dub pack is only available on PC
+              </span>
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSelectMode("upload")}
+            className="cv-menu-btn cv-menu-btn-outline flex-1 min-h-[5rem]"
+          >
+            <span className="cv-menu-btn-head">
+              <MenuModeIcon mode="upload" />
+              <span className="cv-menu-btn-title">Create a Dub</span>
+            </span>
+            <span className="cv-menu-btn-sub normal-case">
+              Upload a clip · mark lines · save as a pack
+            </span>
+          </button>
+        )}
       </div>
     </div>
   );

@@ -7,7 +7,9 @@
     "build": "node scripts/copy-ogv.mjs && node scripts/copy-ffmpeg.mjs && next build",
     "postinstall": "node scripts/copy-ogv.mjs && node scripts/copy-ffmpeg.mjs",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "mobile": "npm --prefix mobile start",
+    "mobile:install": "npm --prefix mobile install"
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",

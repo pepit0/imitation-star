@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Bebas_Neue, IBM_Plex_Mono } from "next/font/google";
 import { AuthProvider } from "@/components/auth/AuthProvider";
-import Header from "@/components/Header";
+import NativeAppBackBar from "@/components/NativeAppBackBar";
+import SiteHeader from "@/components/SiteHeader";
+import { NATIVE_APP_STORAGE_KEY } from "@/lib/nativeApp";
 import "./globals.css";
 
 const ibmPlexMono = IBM_Plex_Mono({
@@ -44,15 +46,28 @@ export const viewport: Viewport = {
   themeColor: "#FF595E",
 };
 
+/** Runs before paint so site Header never flashes in the Expo / store shell. */
+const NATIVE_APP_BOOT =
+  `(function(){try{var s="${NATIVE_APP_STORAGE_KEY}";` +
+  `var q=location.search;` +
+  `if(/[?&]client=app(?:&|$)/.test(q)||/[?&]native=1(?:&|$)/.test(q)){` +
+  `sessionStorage.setItem(s,"1");document.documentElement.dataset.nativeApp="1";` +
+  `}else if(sessionStorage.getItem(s)==="1"){document.documentElement.dataset.nativeApp="1";}` +
+  `}catch(e){}})();`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
       className={`${ibmPlexMono.variable} ${bebasNeue.variable} h-full`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: NATIVE_APP_BOOT }} />
+      </head>
       <body className="h-full flex flex-col overflow-hidden antialiased">
         <AuthProvider>
-          <Header />
+          <SiteHeader />
+          <NativeAppBackBar />
           <main className="flex-1 min-h-0 overflow-y-auto">{children}</main>
         </AuthProvider>
       </body>

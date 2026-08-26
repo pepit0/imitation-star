@@ -27,11 +27,19 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Mobile
 
-Imitation Star is designed mobile-first. For the best experience:
+### Expo Go / store shell
 
-1. Open in Safari (iOS) or Chrome (Android)
-2. Use landscape orientation during recording
-3. Add to home screen for app-like experience
+```bash
+cd mobile
+npm install
+npx expo start
+```
+
+Opens the game at `/play?client=app` (no marketing header; Forum/Profile on the menu; Create a Dub is PC-only). See [`mobile/README.md`](mobile/README.md) for local Next.js and **EAS App Store / Play** builds.
+
+### Browser
+
+Imitation Star is designed mobile-first. You can also open the site in Safari (iOS) or Chrome (Android), or add it to the home screen as a PWA.
 
 ## Project Structure
 
@@ -54,4 +62,6 @@ src/
 - [ ] MP4 export
 - [ ] Upload your own video
 - [ ] User accounts and saved dubs
-- [ ] Native mobile app (Capacitor/React Native)
+- [x] Expo Go WebView shell (`mobile/`)
+- [x] Store-ready EAS config + native game-only UX (`?client=app`)
+- [ ] App Store / Play submission

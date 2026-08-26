@@ -16,6 +16,7 @@ import {
   loadBrowsablePacks,
 } from "@/lib/packStore";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { useIsNativeApp } from "@/hooks/useIsNativeApp";
 import GameStageChrome from "./GameStageChrome";
 import MainMenu from "./MainMenu";
 import PackBrowser from "./PackBrowser";
@@ -38,6 +39,7 @@ export default function GameStage({
 }: GameStageProps) {
   const router = useRouter();
   const { user, profile } = useAuth();
+  const isNativeApp = useIsNativeApp();
   const [userPacks, setUserPacks] = useState<DubPack[]>([]);
   const [packsReady, setPacksReady] = useState(false);
   const [rankById, setRankById] = useState<PackRankLookup>(new Map());
@@ -132,6 +134,7 @@ export default function GameStage({
 
   const handleSelectMode = useCallback(
     (selectedMode: GameMode) => {
+      if (selectedMode === "upload" && isNativeApp) return;
       if (selectedMode === "multiplayer" && !user) {
         router.push("/login?next=/play");
         return;
@@ -147,7 +150,7 @@ export default function GameStage({
         setPhase("recording");
       }
     },
-    [user, router, clearPlayQuery]
+    [user, router, clearPlayQuery, isNativeApp]
   );
 
   const handleSelectPack = useCallback(
@@ -236,7 +239,7 @@ export default function GameStage({
   const isEndScreen = phase === "final-preview";
   // Only Create a Dub (UploadPack) may grow past the viewport and scroll.
   const isScrollStage = isPackMaker;
-  const hideChrome = isPackMaker || isEndScreen || isCollabSetup;
+  const hideChrome = isNativeApp || isPackMaker || isEndScreen || isCollabSetup;
 
   return (
     <div

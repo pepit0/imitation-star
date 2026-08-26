@@ -43,3 +43,6 @@ next-env.d.ts
 
 # local scratch / e2e artifacts
 /tmp/
+
+.vercel
+.env*

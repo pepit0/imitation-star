@@ -124,6 +124,11 @@ body {
   overscroll-behavior: none;
 }
 
+/* Expo / store shell: hide website header before React hydrates */
+html[data-native-app="1"] [data-site-header] {
+  display: none !important;
+}
+
 /* ── Retro borders & panels ── */
 
 .brutal-border,
