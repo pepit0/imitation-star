@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   getSupabasePublishableKey,
   getSupabaseUrl,
+  hasSupabaseConfig,
 } from "@/lib/supabase/env";
 
 /**
@@ -10,6 +11,11 @@ import {
  * Does not force login — browsing stays open without an account.
  */
 export async function updateSession(request: NextRequest) {
+  // Without env vars (e.g. fresh Vercel deploy), skip auth refresh instead of 500.
+  if (!hasSupabaseConfig()) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
