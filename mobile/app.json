@@ -41,7 +41,11 @@
       "privacyPolicyUrl": "https://imitation-star.vercel.app/privacy",
       "termsOfServiceUrl": "https://imitation-star.vercel.app/terms",
       "supportUrl": "https://imitation-star.vercel.app/support",
-      "supportEmail": "support@imitationstar.app"
-    }
+      "supportEmail": "support@imitationstar.app",
+      "eas": {
+        "projectId": "5e1be3f9-4dce-4373-af61-593a87689c3f"
+      }
+    },
+    "owner": "danpepito"
   }
 }
