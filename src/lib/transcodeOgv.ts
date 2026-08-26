@@ -224,8 +224,9 @@ async function transcodeViaDirectUpload(
 }
 
 /**
- * Large OGV path: signed upload to Supabase → server converts from storage.
+ * Large OGV path: upload to Supabase Storage → server converts from storage.
  * Bypasses Vercel’s ~100 MB request body limit (needed for ~120 MB packs).
+ * Works with signed upload (service role) or public ogv-convert/ policy.
  */
 async function transcodeViaStorage(
   input: Blob,
@@ -252,56 +253,85 @@ async function transcodeViaStorage(
 
   const prepared = (await prepareRes.json()) as {
     storagePath: string;
-    signedUrl: string;
+    signedUrl?: string;
     token?: string;
+    mode?: "signed" | "public";
   };
 
-  if (!prepared.storagePath || !prepared.signedUrl) {
-    throw new Error("Server did not return an upload URL for large OGV convert.");
+  if (!prepared.storagePath) {
+    throw new Error("Server did not return a storage path for large OGV convert.");
   }
 
-  onProgress?.(
-    8,
-    `Uploading ${(input.size / (1024 * 1024)).toFixed(0)} MB OGV…`
-  );
+  const mb = (input.size / (1024 * 1024)).toFixed(0);
+  onProgress?.(8, `Uploading ${mb} MB OGV to storage…`);
 
-  if (!prepared.token) {
-    throw new Error("Server did not return an upload token for large OGV convert.");
-  }
-
-  // Prefer Supabase helper (FormData + token query) over raw PUT.
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
-  const { error: uploadError } = await supabase.storage
-    .from(DUB_PACKS_BUCKET)
-    .uploadToSignedUrl(prepared.storagePath, prepared.token, input, {
-      contentType: input.type || "video/ogg",
-      upsert: false,
-    });
+  const contentType = input.type || "video/ogg";
 
-  if (uploadError) {
-    throw new Error(
-      `Could not upload OGV to storage: ${uploadError.message}. Check Supabase storage / service role.`
-    );
+  if (prepared.mode === "signed" && prepared.token) {
+    const { error: uploadError } = await supabase.storage
+      .from(DUB_PACKS_BUCKET)
+      .uploadToSignedUrl(prepared.storagePath, prepared.token, input, {
+        contentType,
+        upsert: false,
+      });
+    if (uploadError) {
+      throw new Error(
+        `Could not upload OGV to storage: ${uploadError.message}`
+      );
+    }
+  } else {
+    const { error: uploadError } = await supabase.storage
+      .from(DUB_PACKS_BUCKET)
+      .upload(prepared.storagePath, input, {
+        contentType,
+        upsert: false,
+      });
+    if (uploadError) {
+      throw new Error(
+        `Could not upload OGV to storage: ${uploadError.message}. If this persists, check dub-packs size limit (≥250 MB) and video/ogg mime types.`
+      );
+    }
   }
 
   if (signal?.aborted) {
+    void supabase.storage
+      .from(DUB_PACKS_BUCKET)
+      .remove([prepared.storagePath])
+      .catch(() => undefined);
     throw new DOMException("Transcode aborted", "AbortError");
   }
 
   onProgress?.(45, "Converting OGV on server…");
 
-  const convertRes = await fetch("/api/packs/convert-ogv", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ storagePath: prepared.storagePath }),
-    signal,
-  });
+  let encodePulse: ReturnType<typeof setInterval> | null = null;
+  let encodePct = 48;
+  encodePulse = setInterval(() => {
+    encodePct = Math.min(90, encodePct + 1);
+    onProgress?.(encodePct, "Encoding 640p preview on server…");
+  }, 1500);
 
-  if (!convertRes.ok) throw new Error(await parseError(convertRes));
+  try {
+    const convertRes = await fetch("/api/packs/convert-ogv", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storagePath: prepared.storagePath }),
+      signal,
+    });
 
-  onProgress?.(95, "Downloading MP4 preview…");
-  return await convertRes.blob();
+    if (!convertRes.ok) throw new Error(await parseError(convertRes));
+
+    onProgress?.(95, "Downloading MP4 preview…");
+    return await convertRes.blob();
+  } finally {
+    if (encodePulse) clearInterval(encodePulse);
+    // Server also deletes; client best-effort cleanup for orphans.
+    void supabase.storage
+      .from(DUB_PACKS_BUCKET)
+      .remove([prepared.storagePath])
+      .catch(() => undefined);
+  }
 }
 
 async function transcodeViaServer(
@@ -312,7 +342,7 @@ async function transcodeViaServer(
   if (input.size > serverDirectMaxBytes) {
     if (!serverStorageConvert) {
       throw new Error(
-        `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB (limit ${Math.floor(serverDirectMaxBytes / (1024 * 1024))} MB direct). On production, set SUPABASE_SERVICE_ROLE_KEY for large-file convert; locally, restart the Next server after the body-size bump. Or convert to MP4 offline.`
+        `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB (limit ${Math.floor(serverDirectMaxBytes / (1024 * 1024))} MB direct). Large-file convert needs Supabase storage on production. Or convert to MP4 offline.`
       );
     }
     return transcodeViaStorage(input, options);
@@ -321,9 +351,13 @@ async function transcodeViaServer(
   try {
     return await transcodeViaDirectUpload(input, inputName, options);
   } catch (err) {
-    // If direct upload is rejected as too large, retry via storage when available.
     const message = err instanceof Error ? err.message : "";
-    if (serverStorageConvert && /use storage|413|too large|over \d+ MB/i.test(message)) {
+    if (
+      serverStorageConvert &&
+      /use storage|413|too large|over \d+ MB|Entity Too Large|Payload/i.test(
+        message
+      )
+    ) {
       return transcodeViaStorage(input, options);
     }
     throw err;

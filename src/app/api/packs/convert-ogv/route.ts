@@ -16,6 +16,11 @@ import {
   getPreviewEncoder,
 } from "@/lib/ffmpegPreviewEncode";
 import { createAdminClient, hasAdminClient } from "@/lib/supabase/admin";
+import {
+  getSupabasePublishableKey,
+  getSupabaseUrl,
+  hasSupabaseConfig,
+} from "@/lib/supabase/env";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -50,11 +55,65 @@ function isSafeConvertPath(storagePath: string): boolean {
   );
 }
 
+function publicObjectUrl(storagePath: string): string {
+  const base = getSupabaseUrl().replace(/\/$/, "");
+  return `${base}/storage/v1/object/public/${DUB_PACKS_BUCKET}/${storagePath}`;
+}
+
 async function writeBlobToFile(blob: Blob, destPath: string): Promise<void> {
   const nodeReadable = Readable.fromWeb(
     blob.stream() as import("node:stream/web").ReadableStream
   );
   await pipeline(nodeReadable, createWriteStream(destPath));
+}
+
+/** Stream a remote OGV to disk — avoids holding ~120 MB twice in RAM on Hobby. */
+async function downloadStoragePathToFile(
+  storagePath: string,
+  destPath: string
+): Promise<number> {
+  const admin = createAdminClient();
+  if (admin) {
+    const { data: blob, error: dlError } = await admin.storage
+      .from(DUB_PACKS_BUCKET)
+      .download(storagePath);
+    if (dlError || !blob) {
+      throw new Error(dlError?.message ?? "Could not download uploaded OGV.");
+    }
+    await writeBlobToFile(blob, destPath);
+    return blob.size;
+  }
+
+  const res = await fetch(publicObjectUrl(storagePath));
+  if (!res.ok || !res.body) {
+    throw new Error(
+      `Could not download uploaded OGV (${res.status}). Check that the file was uploaded to storage.`
+    );
+  }
+  const nodeReadable = Readable.fromWeb(
+    res.body as import("node:stream/web").ReadableStream
+  );
+  await pipeline(nodeReadable, createWriteStream(destPath));
+  const st = await fs.stat(destPath);
+  return st.size;
+}
+
+async function removeStoragePath(storagePath: string): Promise<void> {
+  const admin = createAdminClient();
+  if (admin) {
+    await admin.storage
+      .from(DUB_PACKS_BUCKET)
+      .remove([storagePath])
+      .catch(() => undefined);
+    return;
+  }
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const client = createClient(getSupabaseUrl(), getSupabasePublishableKey());
+    await client.storage.from(DUB_PACKS_BUCKET).remove([storagePath]);
+  } catch {
+    /* ignore — client also cleans up */
+  }
 }
 
 function streamFileResponse(
@@ -85,7 +144,6 @@ async function convertPathToMp4Response(
   tmpDir: string
 ): Promise<NextResponse> {
   const outputPath = path.join(tmpDir, "output.mp4");
-  // Skip duration probe — an extra FFmpeg pass isn't worth it for progress alone.
   const encoder = await runPreviewEncode(ffmpegPath, inputPath, outputPath);
 
   const cleanup = () => {
@@ -100,6 +158,7 @@ async function convertPathToMp4Response(
 /** Probe: FFmpeg + whether large (storage) converts are available. */
 export async function GET() {
   const maxDirectBytes = maxDirectUploadBytes();
+  const storageConvert = hasSupabaseConfig();
   try {
     const ffmpegPath = await resolveFfmpegPath();
     await runFfmpegVersion(ffmpegPath);
@@ -108,7 +167,8 @@ export async function GET() {
       available: true,
       maxDirectBytes,
       maxBytes: MAX_STORAGE_BYTES,
-      storageConvert: hasAdminClient(),
+      storageConvert,
+      signedUpload: hasAdminClient(),
       localDirectLarge: !isVercelRuntime(),
       previewEncoder: encoder,
       previewProfile: "640p24-fast",
@@ -119,6 +179,7 @@ export async function GET() {
       maxDirectBytes,
       maxBytes: MAX_STORAGE_BYTES,
       storageConvert: false,
+      signedUpload: false,
       localDirectLarge: !isVercelRuntime(),
     });
   }
@@ -129,7 +190,7 @@ export async function GET() {
  *
  * Modes:
  * 1) multipart `file` — direct upload (≤ ~80 MB on Vercel, ≤ ~250 MB on localhost)
- * 2) JSON `{ action: "prepare-upload" }` — signed URL for large OGV (Vercel)
+ * 2) JSON `{ action: "prepare-upload" }` — path (+ optional signed URL) for large OGV
  * 3) JSON `{ storagePath }` — convert a previously uploaded temp OGV
  */
 export async function POST(request: Request) {
@@ -153,37 +214,47 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "prepare-upload") {
-      const admin = createAdminClient();
-      if (!admin) {
+      if (!hasSupabaseConfig()) {
         return NextResponse.json(
           {
             error:
-              "Large OGV convert needs SUPABASE_SERVICE_ROLE_KEY on the server. Add it in Vercel env, or convert to MP4 offline.",
+              "Large OGV convert needs Supabase storage. Configure NEXT_PUBLIC_SUPABASE_URL.",
           },
           { status: 503 }
         );
       }
 
       const storagePath = `${CONVERT_PREFIX}${crypto.randomUUID()}.ogv`;
-      const { data, error } = await admin.storage
-        .from(DUB_PACKS_BUCKET)
-        .createSignedUploadUrl(storagePath);
+      const admin = createAdminClient();
+      if (admin) {
+        const { data, error } = await admin.storage
+          .from(DUB_PACKS_BUCKET)
+          .createSignedUploadUrl(storagePath);
 
-      if (error || !data) {
-        return NextResponse.json(
-          {
-            error:
-              error?.message ??
-              "Could not create upload URL. Check dub-packs storage policies.",
-          },
-          { status: 500 }
-        );
+        if (error || !data) {
+          return NextResponse.json(
+            {
+              error:
+                error?.message ??
+                "Could not create upload URL. Check dub-packs storage policies.",
+            },
+            { status: 500 }
+          );
+        }
+
+        return NextResponse.json({
+          storagePath,
+          signedUrl: data.signedUrl,
+          token: data.token,
+          mode: "signed",
+          maxBytes: MAX_STORAGE_BYTES,
+        });
       }
 
+      // No service role: client uploads with the anon key into ogv-convert/.
       return NextResponse.json({
         storagePath,
-        signedUrl: data.signedUrl,
-        token: data.token,
+        mode: "public",
         maxBytes: MAX_STORAGE_BYTES,
       });
     }
@@ -196,42 +267,24 @@ export async function POST(request: Request) {
       );
     }
 
-    const admin = createAdminClient();
-    if (!admin) {
-      return NextResponse.json(
-        {
-          error:
-            "Large OGV convert needs SUPABASE_SERVICE_ROLE_KEY on the server.",
-        },
-        { status: 503 }
-      );
-    }
-
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "imitation-ogv-"));
     const inputPath = path.join(tmp, "input.ogv");
 
     try {
-      const { data: blob, error: dlError } = await admin.storage
-        .from(DUB_PACKS_BUCKET)
-        .download(storagePath);
+      const size = await downloadStoragePathToFile(storagePath, inputPath);
 
-      if (dlError || !blob) {
-        return NextResponse.json(
-          { error: dlError?.message ?? "Could not download uploaded OGV." },
-          { status: 404 }
-        );
-      }
-
-      if (blob.size > MAX_STORAGE_BYTES) {
+      if (size > MAX_STORAGE_BYTES) {
+        await fs
+          .rm(tmp, { recursive: true, force: true })
+          .catch(() => undefined);
+        void removeStoragePath(storagePath);
         return NextResponse.json(
           {
-            error: `Video is ${(blob.size / (1024 * 1024)).toFixed(0)} MB — max ${Math.floor(MAX_STORAGE_BYTES / (1024 * 1024))} MB.`,
+            error: `Video is ${(size / (1024 * 1024)).toFixed(0)} MB — max ${Math.floor(MAX_STORAGE_BYTES / (1024 * 1024))} MB.`,
           },
           { status: 413 }
         );
       }
-
-      await writeBlobToFile(blob, inputPath);
 
       const response = await convertPathToMp4Response(
         ffmpegPath,
@@ -239,18 +292,12 @@ export async function POST(request: Request) {
         tmp
       );
 
-      void admin.storage
-        .from(DUB_PACKS_BUCKET)
-        .remove([storagePath])
-        .catch(() => undefined);
+      void removeStoragePath(storagePath);
 
       return response;
     } catch (e) {
       await fs.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
-      void admin.storage
-        .from(DUB_PACKS_BUCKET)
-        .remove([storagePath])
-        .catch(() => undefined);
+      void removeStoragePath(storagePath);
       const message =
         e instanceof Error ? e.message : "Could not convert OGV to MP4.";
       return NextResponse.json({ error: message }, { status: 500 });
