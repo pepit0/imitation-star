@@ -13,8 +13,17 @@ let ffmpegInstance: FFmpeg | null = null;
 let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
 let serverFfmpegAvailable: boolean | null = null;
 let serverStorageConvert = false;
+let serverLocalDirectLarge = false;
 let serverDirectMaxBytes = SERVER_DIRECT_MAX_BYTES;
 let serverMaxBytes = SERVER_MAX_BYTES;
+
+/** Thrown when the editor should play the source OGV locally (no MP4 proxy). */
+export class UseOgvPreviewError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UseOgvPreviewError";
+  }
+}
 
 async function getFfmpeg(): Promise<FFmpeg> {
   if (ffmpegInstance?.loaded) return ffmpegInstance;
@@ -60,9 +69,11 @@ export async function checkServerOgvConvertAvailable(): Promise<boolean> {
       maxBytes?: number;
       maxDirectBytes?: number;
       storageConvert?: boolean;
+      localDirectLarge?: boolean;
     };
     serverFfmpegAvailable = Boolean(data.available);
     serverStorageConvert = Boolean(data.storageConvert);
+    serverLocalDirectLarge = Boolean(data.localDirectLarge);
     if (typeof data.maxBytes === "number" && data.maxBytes > 0) {
       serverMaxBytes = data.maxBytes;
     }
@@ -339,10 +350,19 @@ async function transcodeViaServer(
   inputName: string,
   options: TranscodeOgvOptions
 ): Promise<Blob> {
+  // Production (Vercel) cannot accept ~120 MB POST bodies. Shipping that OGV to
+  // Storage just for a local pack-maker preview fights "edit locally until publish".
+  // Use the in-browser OGV player instead; localhost still converts directly.
+  if (input.size > serverDirectMaxBytes && !serverLocalDirectLarge) {
+    throw new UseOgvPreviewError(
+      `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB — using the local OGV player for editing (no upload until you publish).`
+    );
+  }
+
   if (input.size > serverDirectMaxBytes) {
     if (!serverStorageConvert) {
-      throw new Error(
-        `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB (limit ${Math.floor(serverDirectMaxBytes / (1024 * 1024))} MB direct). Large-file convert needs Supabase storage on production. Or convert to MP4 offline.`
+      throw new UseOgvPreviewError(
+        `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB — using the local OGV player for editing.`
       );
     }
     return transcodeViaStorage(input, options);
@@ -354,11 +374,17 @@ async function transcodeViaServer(
     const message = err instanceof Error ? err.message : "";
     if (
       serverStorageConvert &&
+      serverLocalDirectLarge &&
       /use storage|413|too large|over \d+ MB|Entity Too Large|Payload/i.test(
         message
       )
     ) {
       return transcodeViaStorage(input, options);
+    }
+    if (/use storage|413|too large|over \d+ MB|Entity Too Large|Payload/i.test(message)) {
+      throw new UseOgvPreviewError(
+        "File is too large for a fast MP4 preview here — using the local OGV player for editing."
+      );
     }
     throw err;
   }
@@ -479,8 +505,8 @@ export async function transcodeOgvToMp4(
       );
     }
   } else {
-    throw new Error(
-      `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB and server FFmpeg is unavailable. Preview will use the OGV player — or convert to MP4 offline.`
+    throw new UseOgvPreviewError(
+      `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB and server FFmpeg is unavailable — using the local OGV player for editing.`
     );
   }
 

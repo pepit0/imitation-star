@@ -30,6 +30,7 @@ import {
   loadCachedOgvProxy,
   ogvProxyCacheKey,
   transcodeOgvToMp4,
+  UseOgvPreviewError,
 } from "@/lib/transcodeOgv";
 import { useAuth } from "@/components/auth/AuthProvider";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -533,6 +534,21 @@ export default function UploadPack({
     []
   );
 
+  const useLocalOgvPreview = useCallback((ogvFile: File, status: string) => {
+    setTranscodeProgress(-1);
+    setTranscodeLabel(null);
+    setError(null);
+    setOgvWarning(false);
+    setImportStatus(status);
+    setUseOgvVideo(true);
+    setVideoFrameReady(true);
+    setFile(ogvFile);
+    setObjectUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(ogvFile);
+    });
+  }, []);
+
   const runOgvTranscode = useCallback(
     async (ogvFile: File) => {
       transcodeAbortRef.current?.abort();
@@ -569,25 +585,23 @@ export default function UploadPack({
         setImportStatus("MP4 preview ready — editing stays on this device until you publish.");
       } catch (e) {
         if (ac.signal.aborted) return;
+        if (e instanceof UseOgvPreviewError || (e instanceof Error && e.name === "UseOgvPreviewError")) {
+          useLocalOgvPreview(
+            ogvFile,
+            "Editing locally with the OGV player — nothing uploads until you publish."
+          );
+          return;
+        }
         const detail =
           e instanceof Error ? e.message : "Unknown conversion error";
-        setTranscodeProgress(-1);
-        setTranscodeLabel(null);
-        setError(null);
-        setOgvWarning(true);
-        setImportStatus(
-          `Could not build MP4 preview (${detail}). Showing OGV fallback — replace with MP4 if playback stays blank.`
+        useLocalOgvPreview(
+          ogvFile,
+          `Could not build MP4 preview (${detail}). Showing OGV player — replace with MP4 if playback stays blank.`
         );
-        setUseOgvVideo(true);
-        setVideoFrameReady(true);
-        setFile(ogvFile);
-        setObjectUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return URL.createObjectURL(ogvFile);
-        });
+        setOgvWarning(true);
       }
     },
-    [applyMp4Preview]
+    [applyMp4Preview, useLocalOgvPreview]
   );
 
   const applyCvImport = useCallback(
@@ -685,7 +699,7 @@ export default function UploadPack({
         if (result.ogvVideo) {
           setObjectUrl(null);
           setImportStatus(
-            `Imported ${result.clips.length} clips — edit now while we build a fast MP4 preview…`
+            `Imported ${result.clips.length} clips — preparing video preview…`
           );
           void runOgvTranscode(result.videoFile);
         } else {
