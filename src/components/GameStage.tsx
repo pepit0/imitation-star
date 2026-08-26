@@ -247,14 +247,18 @@ export default function GameStage({
         isScrollStage
           ? "w-full max-w-7xl mx-auto"
           : fill
-            ? "w-full h-full min-h-0 max-w-7xl mx-auto flex items-stretch justify-center pr-1 pb-1"
+            ? isNativeApp
+              ? "w-full h-full min-h-0 max-w-none flex items-stretch justify-center"
+              : "w-full h-full min-h-0 max-w-7xl mx-auto flex items-stretch justify-center pr-1 pb-1"
             : "w-full max-w-4xl mx-auto"
       }
     >
       <div
         id="game-stage-container"
-        className={`brutal-border brutal-shadow flex flex-col w-full min-h-0 ${
-          isNativeApp ? "bg-es-brand" : "bg-es-dark"
+        className={`flex flex-col w-full min-h-0 ${
+          isNativeApp
+            ? "border-0 shadow-none bg-es-brand"
+            : "brutal-border brutal-shadow bg-es-dark"
         } ${isScrollStage ? "pm-stage" : "overflow-hidden"}`}
         style={
           isScrollStage

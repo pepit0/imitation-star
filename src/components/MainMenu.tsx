@@ -216,7 +216,7 @@ export default function MainMenu({
             >
               <span className="cv-menu-btn-head">
                 <MenuModeIcon mode="upload" />
-                <span className="cv-menu-btn-title">Create a Dub</span>
+                <span className="cv-menu-btn-title">Create a Dub Pack</span>
               </span>
               <span className="cv-menu-btn-sub normal-case">
                 Create a dub pack is only available on PC
@@ -231,7 +231,7 @@ export default function MainMenu({
           >
             <span className="cv-menu-btn-head">
               <MenuModeIcon mode="upload" />
-              <span className="cv-menu-btn-title">Create a Dub</span>
+              <span className="cv-menu-btn-title">Create a Dub Pack</span>
             </span>
             <span className="cv-menu-btn-sub normal-case">
               Upload a clip · mark lines · save as a pack
