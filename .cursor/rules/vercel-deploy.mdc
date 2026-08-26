@@ -1,0 +1,24 @@
+---
+description: Avoid double Vercel production deploys when pushing to main
+alwaysApply: true
+---
+
+# Vercel deploy: push only (no CLI double-deploy)
+
+This repo (`pepit0/imitation-star`) is linked to Vercel. **Pushing to `main` already triggers a production deployment** via the GitHub integration.
+
+## When the user asks to push / commit and push
+
+1. Commit (if needed) and `git push` to `origin`.
+2. **Do not** also run `vercel deploy`, `vercel --prod`, or `npx vercel deploy --prod`.
+3. Tell the user that Vercel will pick up the GitHub push automatically.
+
+## When to use the Vercel CLI
+
+Only run a manual production deploy if **all** of these are true:
+
+- The user explicitly asks to deploy / redeploy, **or**
+- GitHub auto-deploy clearly failed / never appeared after a push (check Vercel deployments first), **and**
+- You are not also pushing in the same step (push already happened earlier and no deploy showed up)
+
+Never combine `git push` and `vercel deploy --prod` in one action — that creates **two** production deployments for the same commit.
