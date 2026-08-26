@@ -176,7 +176,42 @@ export async function publishDubPost(input: {
       .catch(() => undefined);
     throw error;
   }
-  return postFromRow(data as DubPostRow);
+
+  const post = postFromRow(data as DubPostRow);
+
+  // Notify followers + pack owner (best-effort; needs service role on server).
+  const { emitNotificationEvent } = await import("@/lib/pushNotifications");
+  emitNotificationEvent({
+    type: "followee_posted",
+    postId: post.id,
+    packId: post.packId,
+    packTitle: post.packTitle,
+  });
+
+  let packOwnerId: string | null = null;
+  try {
+    const { data: packRow } = await supabase
+      .from("dub_packs")
+      .select("owner_id")
+      .eq("id", input.packId)
+      .maybeSingle();
+    packOwnerId = (packRow?.owner_id as string | undefined) ?? null;
+  } catch {
+    packOwnerId = null;
+  }
+
+  if (packOwnerId && packOwnerId !== input.authorId) {
+    emitNotificationEvent({
+      type: "pack_used",
+      packId: post.packId,
+      packTitle: post.packTitle,
+      packOwnerId,
+      targetUserId: packOwnerId,
+      postId: post.id,
+    });
+  }
+
+  return post;
 }
 
 export async function archiveDubPost(postId: string): Promise<void> {

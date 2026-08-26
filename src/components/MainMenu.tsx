@@ -36,7 +36,9 @@ export default function MainMenu({
           <div className="cv-main-menu__hero-brand flex items-center min-w-0">
             <LogoMark
               className={`object-contain shrink-0 ${
-                isNativeApp ? "w-10 h-10" : "w-24 h-24 sm:w-28 sm:h-28"
+                isNativeApp
+                  ? "w-10 h-10"
+                  : "cv-main-menu__logo"
               }`}
               title="Imitation Star"
             />
@@ -48,10 +50,17 @@ export default function MainMenu({
                 className={`font-brand landing-hero__brand-title text-white ${
                   isNativeApp
                     ? "text-2xl sm:text-3xl"
-                    : "text-7xl sm:text-8xl lg:text-9xl"
+                    : "cv-main-menu__title"
                 }`}
               >
-                Imitation Star
+                {isNativeApp ? (
+                  "Imitation Star"
+                ) : (
+                  <>
+                    <span className="block">Imitation</span>
+                    <span className="block">Star</span>
+                  </>
+                )}
               </h1>
             </div>
           </div>
@@ -221,11 +230,15 @@ export default function MainMenu({
               <span className="cv-menu-btn-title">Create a Dub Pack</span>
             </span>
             <span className="cv-menu-btn-sub normal-case">
-              Upload a clip · mark lines · save as a pack
+              Account required · upload a clip · mark lines · save as a pack
             </span>
           </button>
         )}
       </div>
+
+      <span className="cv-main-menu__version" aria-hidden="true">
+        1.0.0
+      </span>
     </div>
   );
 }

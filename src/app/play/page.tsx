@@ -15,6 +15,9 @@ const QUESTS = [
 function PlayContent() {
   const searchParams = useSearchParams();
   const packId = searchParams.get("pack") ?? undefined;
+  const intent = searchParams.get("intent");
+  const initialMode =
+    intent === "upload" ? ("upload" as const) : ("single" as const);
   const isNativeApp = useIsNativeApp();
   const [xpState, setXpState] = useState<XpState>({ xp: 0, packsCompleted: 0 });
 
@@ -86,7 +89,7 @@ function PlayContent() {
             : "flex-1 min-h-0 overflow-y-auto flex items-start justify-center p-2 sm:p-3"
         }
       >
-        <GameStage fill initialPackId={packId} initialMode="single" />
+        <GameStage fill initialPackId={packId} initialMode={initialMode} />
       </div>
     </div>
   );

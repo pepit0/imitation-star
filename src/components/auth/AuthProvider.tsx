@@ -18,8 +18,13 @@ import {
 } from "@/lib/supabase/profile";
 import type { UserProfile } from "@/lib/types/social";
 import { hasSupabaseConfig } from "@/lib/supabase/env";
-import { setCurrentUserId, loadFollowingIds } from "@/lib/social/store";
+import { setCurrentUserId, loadFollowingIds, loadStarredIds } from "@/lib/social/store";
 import { migrateLocalFollows } from "@/lib/follows";
+import { isNativeApp } from "@/lib/nativeApp";
+import {
+  listenForNativePushToken,
+  registerNativePushToken,
+} from "@/lib/pushClient";
 
 type AuthContextValue = {
   user: User | null;
@@ -92,17 +97,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     let cancelled = false;
-    void migrateLocalFollows(user.id).then(() => {
-      if (cancelled) return;
-      return loadFollowingIds(user.id);
-    }).then(() => {
-      if (cancelled) return;
-      return fetchProfile(user.id);
-    }).then((next) => {
-      if (!cancelled && next !== undefined) setProfile(next);
-    });
+    void migrateLocalFollows(user.id)
+      .then(() => {
+        if (cancelled) return;
+        return Promise.all([
+          loadFollowingIds(user.id),
+          loadStarredIds(user.id),
+        ]);
+      })
+      .then(() => {
+        if (cancelled) return;
+        return fetchProfile(user.id);
+      })
+      .then((next) => {
+        if (!cancelled && next !== undefined) setProfile(next);
+      });
+
+    if (isNativeApp()) {
+      void registerNativePushToken();
+    }
+
+    const stopListen = listenForNativePushToken();
+
     return () => {
       cancelled = true;
+      stopListen();
     };
   }, [user]);
 

@@ -694,6 +694,24 @@ a.brutal-btn.block {
 }
 
 /* Desktop + shared coral game menu shell */
+.cv-main-menu {
+  position: relative;
+}
+
+.cv-main-menu__version {
+  position: absolute;
+  left: 0.45rem;
+  bottom: 0.3rem;
+  z-index: 2;
+  margin: 0;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: #8b929a;
+  pointer-events: none;
+  user-select: none;
+}
+
 .cv-main-menu--desktop {
   background: var(--es-coral);
   color: var(--es-white);
@@ -701,8 +719,39 @@ a.brutal-btn.block {
 
 .cv-main-menu--desktop .cv-main-menu__brand {
   position: relative;
-  background: var(--es-coral);
   border-color: var(--es-black);
+  /* Size title + singer against the brand column, not the full monitor */
+  container-type: size;
+  container-name: menu-brand;
+  /* Static coral color-wave — same red family, no animation */
+  background-color: var(--es-coral);
+  background-image:
+    radial-gradient(
+      ellipse 95% 70% at 8% 6%,
+      color-mix(in srgb, var(--es-brand-soft) 58%, transparent),
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 80% 75% at 92% 48%,
+      color-mix(in srgb, var(--es-coral-deep) 40%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 110% 55% at 40% 105%,
+      color-mix(in srgb, var(--es-coral-hover) 45%, transparent),
+      transparent 52%
+    ),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 720' preserveAspectRatio='none'%3E%3Cpath fill='%23ff9a9d' opacity='0.28' d='M0 140C180 40 300 220 480 130C660 40 780 120 960 90V0H0Z'/%3E%3Cpath fill='%23c43d42' opacity='0.2' d='M0 320C200 230 340 410 520 310C700 210 820 340 960 290V720H0Z'/%3E%3Cpath fill='%23e04e53' opacity='0.22' d='M0 500C160 430 340 580 520 500C700 420 820 540 960 510V720H0Z'/%3E%3C/svg%3E"),
+    linear-gradient(
+      158deg,
+      color-mix(in srgb, var(--es-brand-soft) 32%, var(--es-coral)) 0%,
+      var(--es-coral) 38%,
+      color-mix(in srgb, var(--es-coral-hover) 50%, var(--es-coral)) 68%,
+      var(--es-coral) 100%
+    );
+  background-size: auto, auto, auto, 100% 100%, auto;
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
 .cv-main-menu--desktop .cv-main-menu__modes {
@@ -712,12 +761,16 @@ a.brutal-btn.block {
 .cv-main-menu--desktop .cv-main-menu__hero-lockup {
   align-items: center;
   padding-left: 1.75rem;
+  flex: 0 0 auto;
+  max-width: min(100%, 34rem);
 }
 
-.cv-main-menu--desktop .landing-hero__brand-title {
+.cv-main-menu--desktop .landing-hero__brand-title,
+.cv-main-menu--desktop .cv-main-menu__title {
   line-height: 0.88;
   color: var(--es-white);
-  font-size: clamp(4.5rem, 11vw, 8rem);
+  /* Keep the stacked IMITATION / STAR lockup at every stage size */
+  font-size: clamp(3.25rem, 18cqw, 6.25rem);
   /* Hard offset like the hero, but thicker for the larger menu type */
   text-shadow:
     1px 1px 0 var(--es-black),
@@ -742,7 +795,12 @@ a.brutal-btn.block {
 }
 
 .cv-main-menu--desktop .cv-main-menu__hero-brand {
-  gap: 2.75rem;
+  gap: clamp(1.25rem, 4cqw, 2.75rem);
+}
+
+.cv-main-menu--desktop .cv-main-menu__logo {
+  width: clamp(4.5rem, 14cqw, 7.5rem);
+  height: clamp(4.5rem, 14cqw, 7.5rem);
 }
 
 .cv-main-menu--desktop .cv-main-menu__mascot {
@@ -759,12 +817,12 @@ a.brutal-btn.block {
 .cv-main-menu--desktop .cv-main-menu__mascot-img {
   display: block;
   width: auto;
-  /* Explicit size — was limited by parent height:100%, so max-height alone never grew it */
-  height: min(50.4vh, 336px);
-  max-width: min(57.6%, 312px);
+  /* Grow with brand panel height so fullscreen doesn’t shrink the singer */
+  height: clamp(14rem, 58cqh, 34rem);
+  max-width: min(72cqw, 28rem);
   object-fit: contain;
   object-position: bottom right;
-  margin-right: 3.5rem;
+  margin-right: clamp(1.25rem, 6cqw, 3.5rem);
   /* Knock out the solid black artboard against the coral menu */
   mix-blend-mode: screen;
   image-rendering: pixelated;
@@ -2987,6 +3045,7 @@ html[data-native-app="1"] .collab-recording--done {
   display: flex;
   flex-direction: column;
   width: 100%;
+  height: 100%;
   text-align: left;
   text-decoration: none;
   color: inherit;
@@ -3070,7 +3129,7 @@ html[data-native-app="1"] .collab-recording--done {
   pointer-events: none;
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.2rem;
   padding: 0.15rem 0.4rem;
   border: 2px solid var(--es-black);
   box-shadow: 2px 2px 0 var(--es-black);
@@ -3081,11 +3140,35 @@ html[data-native-app="1"] .collab-recording--done {
   line-height: 1;
 }
 
+.pack-card__cover-stars svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.pack-card__cover-stars > span:first-child {
+  display: block;
+  line-height: 1;
+  transform: translateY(0.5px);
+}
+
 .pack-card__stars {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.2rem;
   color: #333;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.pack-card__stars svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.pack-card__stars > span:first-child {
+  display: block;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .pack-card__badge-nsfw {
@@ -3097,8 +3180,10 @@ html[data-native-app="1"] .collab-recording--done {
 .pack-card__body {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   gap: 0.375rem;
   padding: 0.75rem 0.875rem 0.875rem;
+  min-height: 0;
 }
 
 .pack-card__title {
@@ -3128,14 +3213,15 @@ html[data-native-app="1"] .collab-recording--done {
 
 .pack-card__stats {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.85rem;
   margin: 0.25rem 0 0;
 }
 
 .pack-card__stats > div {
   display: flex;
   gap: 0.35rem;
-  align-items: baseline;
+  align-items: center;
 }
 
 .pack-card__stats dt {
@@ -3144,12 +3230,16 @@ html[data-native-app="1"] .collab-recording--done {
   letter-spacing: 0.08em;
   color: #777;
   margin: 0;
+  line-height: 1;
 }
 
 .pack-card__stats dd {
   font-size: 0.75rem;
   font-weight: 600;
   margin: 0;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
 }
 
 .pack-card__credit {
@@ -3163,7 +3253,8 @@ html[data-native-app="1"] .collab-recording--done {
 .pack-card__actions {
   display: flex;
   gap: 0.5rem;
-  margin-top: 0.375rem;
+  margin-top: auto;
+  padding-top: 0.375rem;
 }
 
 .pack-card__play {
@@ -3231,12 +3322,78 @@ html[data-native-app="1"] .collab-recording--done {
   box-shadow: 0 0 0 var(--es-black);
 }
 
+.pack-card--compact .pack-card__cover {
+  aspect-ratio: 16 / 9;
+}
+
 .pack-card--compact .pack-card__body {
-  padding: 0.625rem 0.75rem 0.75rem;
+  padding: 0.4rem 0.5rem 0.5rem;
+  gap: 0.2rem;
 }
 
 .pack-card--compact .pack-card__title {
-  font-size: 0.8125rem;
+  font-size: 0.7rem;
+  -webkit-line-clamp: 1;
+}
+
+.pack-card--compact .pack-card__stats {
+  gap: 0.25rem 0.55rem;
+  margin-top: 0.1rem;
+}
+
+.pack-card--compact .pack-card__stats dt {
+  font-size: 0.5rem;
+}
+
+.pack-card--compact .pack-card__stats dd {
+  font-size: 0.625rem;
+}
+
+.pack-card--compact .pack-card__stars svg {
+  width: 11px;
+  height: 11px;
+}
+
+.pack-card--compact .pack-card__cover-stars {
+  right: 0.35rem;
+  bottom: 0.35rem;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.55rem;
+  gap: 0.15rem;
+}
+
+.pack-card--compact .pack-card__cover-stars svg {
+  width: 10px;
+  height: 10px;
+}
+
+.pack-card--compact .pack-card__credit {
+  font-size: 0.55rem;
+}
+
+.pack-card--compact .pack-card__actions {
+  margin-top: 0.25rem;
+  gap: 0.35rem;
+}
+
+.pack-card--compact .pack-card__play,
+.pack-card--compact .pack-card__delete {
+  padding: 0.28rem 0.5rem;
+  font-size: 0.575rem;
+}
+
+.pack-card--compact .pack-card__badge,
+.pack-card--compact .pack-card__rank {
+  font-size: 0.5rem;
+  padding: 0.12rem 0.35rem;
+}
+
+.pack-card--compact .pack-card__rank {
+  min-width: 1.6rem;
+}
+
+.pack-card--compact {
+  box-shadow: 3px 3px 0 var(--es-black);
 }
 
 .pack-card-grid {
@@ -3252,12 +3409,13 @@ html[data-native-app="1"] .collab-recording--done {
 }
 
 .pack-card-grid--dense {
-  gap: 0.75rem;
+  gap: 0.55rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 @media (min-width: 720px) {
   .pack-card-grid--dense {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -3498,13 +3656,25 @@ html[data-native-app="1"] .collab-recording--done {
   flex-shrink: 0;
 }
 
+.forum-post-card__author-line {
+  display: inline;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
 .forum-post-card__author-name {
   font-size: 0.8rem;
   font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 3px;
-  line-height: 1.2;
-  word-break: break-word;
+}
+
+.forum-post-card__author-sep,
+.forum-post-card__date {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #888;
+  text-decoration: none;
 }
 
 .forum-post-card__author:hover .forum-post-card__author-name {
@@ -4164,9 +4334,14 @@ html[data-native-app="1"] .collab-recording--done {
 }
 
 .dub-end__signin a,
+.dub-end__signin .auth-link,
 .dub-end__posted a {
   color: var(--es-pollen);
   font-weight: 700;
+}
+
+.dub-end__signin .auth-link {
+  text-decoration: underline;
 }
 
 .dub-end__error {
@@ -4233,6 +4408,57 @@ html[data-native-app="1"] .collab-recording--done {
   border: var(--border-width) solid #111;
   box-shadow: 6px 6px 0 #111;
   padding: 1.5rem 1.35rem 1.25rem;
+}
+
+.auth-card--embedded {
+  width: 100%;
+  border: none;
+  box-shadow: none;
+  padding: 0 0 0.25rem;
+}
+
+.auth-card--embedded .auth-card__title {
+  font-size: 2rem;
+}
+
+.auth-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(17, 17, 17, 0.55);
+}
+
+.auth-modal {
+  width: min(100%, 26rem);
+  max-height: min(92vh, 40rem);
+  overflow: auto;
+  background: #fff;
+  border: var(--border-width) solid #111;
+  box-shadow: 6px 6px 0 #111;
+  padding: 0.75rem 1.2rem 1.2rem;
+}
+
+.auth-modal__top {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.auth-modal__close {
+  border: 2px solid #111;
+  background: #fff;
+  width: 2rem;
+  height: 2rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.auth-modal__close:hover {
+  background: #f3f3f3;
 }
 
 .auth-card__eyebrow {

@@ -15,6 +15,7 @@ import {
   hydratePackLineReferences,
   loadBrowsablePacks,
 } from "@/lib/packStore";
+import { recordCommunityPackPlay } from "@/lib/cloudPacks";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useIsNativeApp } from "@/hooks/useIsNativeApp";
 import GameStageChrome from "./GameStageChrome";
@@ -38,7 +39,7 @@ export default function GameStage({
   fill = false,
 }: GameStageProps) {
   const router = useRouter();
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const isNativeApp = useIsNativeApp();
   const [userPacks, setUserPacks] = useState<DubPack[]>([]);
   const [packsReady, setPacksReady] = useState(false);
@@ -67,7 +68,9 @@ export default function GameStage({
     if (initialPackId) return "recording";
     return "menu";
   });
-  const [mode, setMode] = useState<GameMode>(initialMode ?? "single");
+  const [mode, setMode] = useState<GameMode>(
+    initialMode === "upload" ? "single" : (initialMode ?? "single")
+  );
   const [selectedPack, setSelectedPack] = useState<DubPack | null>(null);
   const [recordings, setRecordings] = useState<RecordedLine[]>([]);
   const [xpSessionId, setXpSessionId] = useState<string | null>(null);
@@ -97,6 +100,9 @@ export default function GameStage({
 
   useEffect(() => {
     if (!packsReady || bootstrappedRef.current) return;
+    // Wait for auth before honoring intent=upload (guest → login → return).
+    if (initialMode === "upload" && authLoading) return;
+
     bootstrappedRef.current = true;
 
     if (initialPackId) {
@@ -113,8 +119,37 @@ export default function GameStage({
       }
       return;
     }
+
+    if (initialMode === "upload") {
+      if (user && !isNativeApp) {
+        setMode("upload");
+        setPhase("scene-preview");
+      } else {
+        setMode("single");
+        setPhase("menu");
+      }
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("intent")) {
+          url.searchParams.delete("intent");
+          router.replace(`${url.pathname}${url.search}${url.hash}`);
+        }
+      }
+      return;
+    }
+
     if (defaultPack) setSelectedPack(defaultPack);
-  }, [packsReady, allPacks, initialPackId, defaultPack]);
+  }, [
+    packsReady,
+    allPacks,
+    initialPackId,
+    initialMode,
+    defaultPack,
+    user,
+    authLoading,
+    isNativeApp,
+    router,
+  ]);
 
   const clearPlayQuery = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -135,8 +170,15 @@ export default function GameStage({
   const handleSelectMode = useCallback(
     (selectedMode: GameMode) => {
       if (selectedMode === "upload" && isNativeApp) return;
-      if (selectedMode === "multiplayer" && !user) {
-        router.push("/login?next=/play");
+      if (
+        (selectedMode === "multiplayer" || selectedMode === "upload") &&
+        !user
+      ) {
+        const next =
+          selectedMode === "upload"
+            ? "/play?intent=upload"
+            : "/play";
+        router.push(`/login?next=${encodeURIComponent(next)}`);
         return;
       }
       clearPlayQuery();
@@ -200,11 +242,30 @@ export default function GameStage({
     setPhase("recording");
   }, []);
 
-  const handleComplete = useCallback((recs: RecordedLine[]) => {
-    setRecordings(recs);
-    setXpSessionId(`${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-    setPhase("final-preview");
-  }, []);
+  const handleComplete = useCallback(
+    (recs: RecordedLine[]) => {
+      setRecordings(recs);
+      setXpSessionId(`${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+      setPhase("final-preview");
+
+      const pack = selectedPack;
+      if (!pack) return;
+      void recordCommunityPackPlay(pack).then((nextCount) => {
+        if (nextCount == null) return;
+        setUserPacks((prev) =>
+          prev.map((p) =>
+            p.id === pack.id ? { ...p, playCount: nextCount } : p
+          )
+        );
+        setSelectedPack((current) =>
+          current?.id === pack.id
+            ? { ...current, playCount: nextCount }
+            : current
+        );
+      });
+    },
+    [selectedPack]
+  );
 
   const handleBackToMenu = useCallback(() => {
     clearPlayQuery();

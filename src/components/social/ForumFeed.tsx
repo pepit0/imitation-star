@@ -152,9 +152,12 @@ export default function ForumFeed({ sort }: ForumFeedProps) {
         requireSignIn();
         return;
       }
-      toggleStar(postId);
+      void toggleStar(postId).then(() => {
+        setStarredIds(getStarredPostIds());
+        void refreshPosts();
+      });
     },
-    [user, requireSignIn]
+    [user, requireSignIn, refreshPosts]
   );
 
   const handleFollowToggle = useCallback(

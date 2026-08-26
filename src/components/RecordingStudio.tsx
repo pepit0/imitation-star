@@ -465,6 +465,41 @@ export default function RecordingStudio({
     }
   }, [clearRecordWatchers, hasBacking, line, stopLevelMonitor]);
 
+  /** Stop mid-line without saving so the player can re-record immediately. */
+  const cancelTake = useCallback(async () => {
+    if (!isRecordingRef.current) return;
+    clearRecordWatchers();
+    stopLevelMonitor();
+    isRecordingRef.current = false;
+    setIsRecording(false);
+    setWaveProgress(0);
+    setMicLevel(0);
+    livePeaksRef.current = Array.from({ length: WAVE_BARS }, () => 0);
+    setLivePeaks([...livePeaksRef.current]);
+
+    const v = videoRef.current;
+    if (v) {
+      v.pause();
+      if (hasBacking) v.muted = true;
+    }
+
+    const rec = recorderRef.current;
+    if (rec?.isRecording()) {
+      try {
+        await rec.stop();
+      } catch {
+        /* discard incomplete take */
+      }
+    }
+
+    setStatus("Stopped. Press Record to try this line again.");
+  }, [
+    WAVE_BARS,
+    clearRecordWatchers,
+    hasBacking,
+    stopLevelMonitor,
+  ]);
+
   const handleReplay = useCallback(() => {
     stopLinePlayback();
 
@@ -572,8 +607,10 @@ export default function RecordingStudio({
   }, [hasVideo, hasBacking, line, stopLinePlayback]);
 
   const handleRecord = useCallback(async () => {
-    // Takes run for the full line window — no manual stop.
-    if (isRecordingRef.current) return;
+    if (isRecordingRef.current) {
+      await cancelTake();
+      return;
+    }
 
     try {
       stopLinePlayback();
@@ -596,8 +633,8 @@ export default function RecordingStudio({
 
       setStatus(
         hasVideo
-          ? "Dubbing — match the video until the line ends…"
-          : "Dubbing — perform until the line ends…"
+          ? "Dubbing… tap Stop to restart this line."
+          : "Dubbing… tap Stop to restart this line."
       );
 
       // Hard fallback so a take can never hang if video stalls before endSec.
@@ -631,6 +668,7 @@ export default function RecordingStudio({
       clearRecordWatchers();
     }
   }, [
+    cancelTake,
     clearRecordWatchers,
     finalizeTake,
     hasVideo,
@@ -836,7 +874,7 @@ export default function RecordingStudio({
           <button
             type="button"
             onClick={() => void handleRecord()}
-            disabled={isRecording || isPlayingTake}
+            disabled={isPlayingTake}
             className={`cv-studio-btn ${
               isRecording
                 ? "bg-es-error text-white recording-pulse"
@@ -844,18 +882,18 @@ export default function RecordingStudio({
             }`}
           >
             <span className="cv-studio-btn-icon" aria-hidden="true">
-              ●
+              {isRecording ? "■" : "●"}
             </span>
             <span className="cv-studio-btn-title">
               {isRecording
-                ? "Dubbing…"
+                ? "Stop"
                 : currentRecording
                   ? "Re-record"
                   : "Record"}
             </span>
             <span className="cv-studio-btn-sub">
               {isRecording
-                ? "Runs for the full line"
+                ? "End early and try again"
                 : currentRecording
                   ? "Replace your take for this line"
                   : "Mic + video for this line"}

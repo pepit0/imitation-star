@@ -2,7 +2,7 @@
 
 Hybrid shell: Expo WebView loads the live Next.js game at `/play?client=app` so the store apps are game-only (no marketing site chrome). Desktop browsers are unchanged.
 
-Default origin: [https://imitation-star.vercel.app](https://imitation-star.vercel.app)
+Default origin: [https://www.imitation.site](https://www.imitation.site)
 
 ## Dev (Expo Go)
 
@@ -52,10 +52,11 @@ Bundle IDs (already set in `app.json`):
 
 - [ ] Apple Developer Program + App Store Connect app
 - [ ] Google Play Console app
-- [x] Privacy policy URL: `https://imitation-star.vercel.app/privacy`
-- [x] Terms of service URL: `https://imitation-star.vercel.app/terms`
-- [x] Support URL + email: `https://imitation-star.vercel.app/support`, `support@imitationstar.app`
+- [x] Privacy policy URL: `https://www.imitation.site/privacy`
+- [x] Terms of service URL: `https://www.imitation.site/terms`
+- [x] Support URL + email: `https://www.imitation.site/support`, `support@imitation.site`
 - [x] In-app account deletion: Profile → Delete account (requires `SUPABASE_SERVICE_ROLE_KEY` on Vercel)
+- [ ] Resend SMTP + branded confirm email (`email-templates/`; icon at `/email-icon.png`)
 - [ ] Set support email in App Store Connect / Play Console (same as above)
 - [ ] App screenshots / preview video
 - [ ] Age rating questionnaire (user-generated audio; suggest 12+ / Teen)
@@ -69,9 +70,9 @@ Use these when the store asks for legal links:
 
 | Field | URL |
 | --- | --- |
-| Privacy Policy | https://imitation-star.vercel.app/privacy |
-| Terms of Service | https://imitation-star.vercel.app/terms |
-| Support | https://imitation-star.vercel.app/support |
+| Privacy Policy | https://www.imitation.site/privacy |
+| Terms of Service | https://www.imitation.site/terms |
+| Support | https://www.imitation.site/support |
 
 ### Vercel env for account deletion
 

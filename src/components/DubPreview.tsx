@@ -9,6 +9,7 @@ import { awardPackComplete } from "@/lib/xp";
 import { publishDubPost } from "@/lib/cloudPosts";
 import { formatTimecode } from "@/lib/packStore";
 import { useAuth } from "@/components/auth/AuthProvider";
+import AuthModal from "@/components/auth/AuthModal";
 import AppBackButton from "@/components/AppBackButton";
 import PlayIcon from "@/components/PlayIcon";
 
@@ -56,6 +57,11 @@ export default function DubPreview({
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [publishedId, setPublishedId] = useState<string | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+
+  useEffect(() => {
+    if (user) setAuthOpen(false);
+  }, [user]);
 
   const progress = useMemo(() => {
     if (durationMs <= 0) return 0;
@@ -326,8 +332,14 @@ export default function DubPreview({
               </label>
             ) : (
               <p className="dub-end__signin">
-                <Link href="/login?next=/play">Sign in</Link> to publish this
-                take to the forum.
+                <button
+                  type="button"
+                  className="auth-link"
+                  onClick={() => setAuthOpen(true)}
+                >
+                  Sign in or create an account
+                </button>{" "}
+                to publish this take. You can keep playing without one.
               </p>
             )}
             {publishError ? (
@@ -339,6 +351,15 @@ export default function DubPreview({
         )}
 
         <div className="dub-end__actions">
+          {!user && !publishedId ? (
+            <button
+              type="button"
+              className="brutal-btn dub-end__publish"
+              onClick={() => setAuthOpen(true)}
+            >
+              Sign in to publish
+            </button>
+          ) : null}
           {user && !publishedId ? (
             <button
               type="button"
@@ -361,6 +382,14 @@ export default function DubPreview({
           </AppBackButton>
         </div>
       </footer>
+
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onSuccess={() => setAuthOpen(false)}
+        defaultMode="signup"
+        nextPath="/play"
+      />
     </div>
   );
 }

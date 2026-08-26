@@ -7,6 +7,8 @@ import {
   migrateLocalFollows,
   toggleFollow as toggleFollowDb,
 } from "@/lib/follows";
+import { togglePostStar, listStarredPostIds } from "@/lib/postStars";
+import { emitNotificationEvent } from "@/lib/pushNotifications";
 import {
   LOCAL_USER_ID,
   SEED_POSTS,
@@ -20,12 +22,16 @@ export const SOCIAL_EVENT = "imitation-star:social";
 let currentUserId: string = LOCAL_USER_ID;
 let followingCache: string[] = [];
 let followingLoadedFor: string | null = null;
+let starredCache: string[] = [];
+let starredLoadedFor: string | null = null;
 
 export function setCurrentUserId(userId: string | null): void {
   currentUserId = userId ?? LOCAL_USER_ID;
   if (!userId) {
     followingCache = [];
     followingLoadedFor = null;
+    starredCache = [];
+    starredLoadedFor = null;
   }
 }
 
@@ -61,7 +67,26 @@ function writeIds(key: string, ids: PersistedIds): void {
 }
 
 export function getStarredPostIds(): string[] {
+  if (starredLoadedFor && starredLoadedFor === currentUserId) {
+    return starredCache;
+  }
   return readIds(STARRED_KEY);
+}
+
+export async function loadStarredIds(userId: string): Promise<string[]> {
+  try {
+    const ids = await listStarredPostIds();
+    starredCache = ids;
+    starredLoadedFor = userId;
+    writeIds(STARRED_KEY, ids);
+    dispatchSocialChange();
+    return ids;
+  } catch {
+    const local = readIds(STARRED_KEY);
+    starredCache = local;
+    starredLoadedFor = userId;
+    return local;
+  }
 }
 
 /** Cached following ids — call loadFollowingIds first when signed in. */
@@ -86,13 +111,26 @@ export function isFollowing(userId: string): boolean {
   return followingCache.includes(userId);
 }
 
-export function toggleStar(postId: string): boolean {
-  const starred = getStarredPostIds();
-  const next = starred.includes(postId)
-    ? starred.filter((id) => id !== postId)
-    : [...starred, postId];
+export async function toggleStar(postId: string): Promise<boolean> {
+  if (!currentUserId || currentUserId === LOCAL_USER_ID) {
+    // Guest: keep local-only behavior
+    const starred = getStarredPostIds();
+    const next = starred.includes(postId)
+      ? starred.filter((id) => id !== postId)
+      : [...starred, postId];
+    writeIds(STARRED_KEY, next);
+    starredCache = next;
+    return next.includes(postId);
+  }
+
+  const result = await togglePostStar(postId);
+  const next = result.starred
+    ? [...new Set([...getStarredPostIds(), postId])]
+    : getStarredPostIds().filter((id) => id !== postId);
+  starredCache = next;
+  starredLoadedFor = currentUserId;
   writeIds(STARRED_KEY, next);
-  return next.includes(postId);
+  return result.starred;
 }
 
 export async function toggleFollow(
@@ -110,6 +148,12 @@ export async function toggleFollow(
       : followingCache.filter((id) => id !== targetUserId);
   }
   dispatchSocialChange();
+  if (next) {
+    emitNotificationEvent({
+      type: "follow",
+      targetUserId,
+    });
+  }
   return next;
 }
 

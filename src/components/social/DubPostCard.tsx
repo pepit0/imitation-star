@@ -2,6 +2,7 @@
 
 import type { DubPost, UserProfile } from "@/lib/types/social";
 import { getPackById } from "@/lib/packs";
+import { formatForumPostDate } from "@/lib/formatDate";
 import ProfileAvatar from "@/components/profile/ProfileAvatar";
 
 type DubPostCardProps = {
@@ -48,6 +49,7 @@ export default function DubPostCard({
   const thumbUrl = post.packThumbnailUrl ?? pack?.thumbnailUrl;
   const thumbColor =
     post.packThumbnailColor ?? pack?.thumbnailColor ?? "#FF5A36";
+  const dateLabel = formatForumPostDate(post.createdAt);
 
   return (
     <article className="forum-post-card">
@@ -90,7 +92,23 @@ export default function DubPostCard({
               name={name}
               className="forum-post-card__avatar"
             />
-            <span className="forum-post-card__author-name">{name}</span>
+            <span className="forum-post-card__author-line">
+              <span className="forum-post-card__author-name">{name}</span>
+              {dateLabel ? (
+                <>
+                  <span className="forum-post-card__author-sep" aria-hidden="true">
+                    {" "}
+                    -{" "}
+                  </span>
+                  <time
+                    className="forum-post-card__date"
+                    dateTime={post.createdAt}
+                  >
+                    {dateLabel}
+                  </time>
+                </>
+              ) : null}
+            </span>
           </button>
           <button
             type="button"

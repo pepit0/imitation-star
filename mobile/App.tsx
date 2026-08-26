@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -8,12 +8,25 @@ import {
   Text,
   View,
 } from "react-native";
+import Constants from "expo-constants";
+import * as Device from "expo-device";
+import * as Notifications from "expo-notifications";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
-const DEFAULT_ORIGIN = "https://imitation-star.vercel.app";
+const DEFAULT_ORIGIN = "https://www.imitation.site";
 /** Brand coral — fills notch / hole-punch / home-indicator areas. */
 const SHELL_BG = "#FF595E";
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 function resolveStartUrl(): string {
   const fromEnv = process.env.EXPO_PUBLIC_APP_URL?.trim();
@@ -21,17 +34,119 @@ function resolveStartUrl(): string {
   return `${origin}/play?client=app`;
 }
 
+function resolveWebOrigin(): string {
+  const fromEnv = process.env.EXPO_PUBLIC_APP_URL?.trim();
+  return (fromEnv || DEFAULT_ORIGIN).replace(/\/$/, "");
+}
+
+async function registerForPushAsync(): Promise<string | null> {
+  if (!Device.isDevice) return null;
+
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "Imitation Star",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#FF595E",
+    });
+  }
+
+  const { status: existing } = await Notifications.getPermissionsAsync();
+  let finalStatus = existing;
+  if (existing !== "granted") {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+  if (finalStatus !== "granted") return null;
+
+  const projectId =
+    Constants.easConfig?.projectId ??
+    Constants.expoConfig?.extra?.eas?.projectId;
+  if (!projectId || typeof projectId !== "string") return null;
+
+  const token = (
+    await Notifications.getExpoPushTokenAsync({ projectId })
+  ).data;
+  return token || null;
+}
+
+function injectPushTokenScript(token: string, platform: string): string {
+  const safeToken = JSON.stringify(token);
+  const safePlatform = JSON.stringify(platform);
+  return `
+    (function() {
+      try {
+        window.__IMITATION_PUSH_TOKEN__ = ${safeToken};
+        window.__IMITATION_PUSH_PLATFORM__ = ${safePlatform};
+        window.dispatchEvent(new CustomEvent('imitation-push-token', {
+          detail: { token: ${safeToken}, platform: ${safePlatform} }
+        }));
+      } catch (e) {}
+      true;
+    })();
+  `;
+}
+
 export default function App() {
   const webRef = useRef<WebView>(null);
   const startUrl = useMemo(() => resolveStartUrl(), []);
+  const webOrigin = useMemo(() => resolveWebOrigin(), []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pushToken, setPushToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void registerForPushAsync().then((token) => {
+      if (!cancelled && token) setPushToken(token);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pushToken || !webRef.current) return;
+    webRef.current.injectJavaScript(
+      injectPushTokenScript(pushToken, Platform.OS)
+    );
+  }, [pushToken, loading]);
 
   const reload = useCallback(() => {
     setError(null);
     setLoading(true);
     webRef.current?.reload();
   }, []);
+
+  const onNotificationResponse = useCallback(
+    (response: Notifications.NotificationResponse) => {
+      const data = response.notification.request.content.data as {
+        type?: string;
+        postId?: string;
+        packId?: string;
+      };
+      let path = "/play?client=app";
+      if (data?.postId) {
+        path = `/forum?client=app&post=${encodeURIComponent(data.postId)}`;
+      } else if (data?.type === "followee_pack" || data?.type === "pack_used") {
+        path = `/packs?client=app`;
+      } else if (data?.type === "follow") {
+        path = `/profile?client=app`;
+      }
+      const url = `${webOrigin}${path.startsWith("/") ? path : `/${path}`}`;
+      webRef.current?.injectJavaScript(
+        `window.location.href = ${JSON.stringify(url)}; true;`
+      );
+    },
+    [webOrigin]
+  );
+
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(
+      onNotificationResponse
+    );
+    return () => sub.remove();
+  }, [onNotificationResponse]);
 
   return (
     <SafeAreaProvider>
@@ -66,7 +181,14 @@ export default function App() {
                 setLoading(true);
                 setError(null);
               }}
-              onLoadEnd={() => setLoading(false)}
+              onLoadEnd={() => {
+                setLoading(false);
+                if (pushToken) {
+                  webRef.current?.injectJavaScript(
+                    injectPushTokenScript(pushToken, Platform.OS)
+                  );
+                }
+              }}
               onError={(e) => {
                 setLoading(false);
                 setError(e.nativeEvent.description || "Network error");

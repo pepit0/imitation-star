@@ -124,6 +124,31 @@ export async function listCloudDubPacks(): Promise<DubPack[]> {
 }
 
 /**
+ * Record one completed dub play for a community pack.
+ * No-ops for owners, guests, builtin/local packs, or missing cloud rows.
+ * Returns the updated play_count, or null when nothing changed.
+ */
+export async function recordCommunityPackPlay(
+  pack: Pick<DubPack, "id" | "source" | "ownerId">
+): Promise<number | null> {
+  if (pack.source !== "cloud" || !pack.ownerId || !isUuid(pack.id)) {
+    return null;
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("increment_pack_play_count", {
+    p_pack_id: pack.id,
+  });
+
+  if (error) {
+    console.warn("Could not record pack play:", error.message);
+    return null;
+  }
+  if (typeof data !== "number") return null;
+  return data;
+}
+
+/**
  * Fetch vocals and build per-line reference slices for Replay / waveforms.
  * Safe to call for any pack; no-ops when already hydrated or no vocals.
  */
@@ -215,6 +240,14 @@ export async function publishPackToCloud(input: {
   }
 
   const supabase = createClient();
+
+  const { data: existing } = await supabase
+    .from("dub_packs")
+    .select("id")
+    .eq("id", packId)
+    .maybeSingle();
+  const isFirstPublish = !existing;
+
   const row = {
     id: packId,
     owner_id: input.ownerId,
@@ -242,7 +275,18 @@ export async function publishPackToCloud(input: {
     .single();
 
   if (error) throw error;
-  return rowToDubPack(data as DubPackRow);
+  const pack = rowToDubPack(data as DubPackRow);
+
+  if (isFirstPublish) {
+    const { emitNotificationEvent } = await import("@/lib/pushNotifications");
+    emitNotificationEvent({
+      type: "followee_pack",
+      packId: pack.id,
+      packTitle: pack.title,
+    });
+  }
+
+  return pack;
 }
 
 /** Permanently remove a published pack (row + storage). RLS enforces owner. */

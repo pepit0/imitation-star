@@ -23,6 +23,7 @@ interface PackCardProps {
 function PackStarCount({ count }: { count: number }) {
   return (
     <span className="pack-card__stars" aria-label={`${count} total stars`}>
+      <span>{count.toLocaleString()}</span>
       <svg
         width="14"
         height="14"
@@ -38,7 +39,6 @@ function PackStarCount({ count }: { count: number }) {
           strokeLinejoin="round"
         />
       </svg>
-      <span>{count.toLocaleString()}</span>
     </span>
   );
 }
@@ -112,6 +112,7 @@ function PackCover({
           className="pack-card__cover-stars"
           aria-label={`${aggregateStarCount} total stars from forum dubs`}
         >
+          <span>{aggregateStarCount.toLocaleString()}</span>
           <svg
             width="12"
             height="12"
@@ -127,7 +128,6 @@ function PackCover({
               strokeLinejoin="round"
             />
           </svg>
-          <span>{aggregateStarCount.toLocaleString()}</span>
         </span>
       ) : null}
     </div>
@@ -185,6 +185,10 @@ export default function PackCard({
             <dt>Clips</dt>
             <dd>{pack.clipCount}</dd>
           </div>
+          <div>
+            <dt>Plays</dt>
+            <dd>{pack.playCount.toLocaleString()}</dd>
+          </div>
           {aggregateStarCount != null ? (
             <div>
               <dt>Stars</dt>
@@ -192,12 +196,7 @@ export default function PackCard({
                 <PackStarCount count={aggregateStarCount} />
               </dd>
             </div>
-          ) : (
-            <div>
-              <dt>Plays</dt>
-              <dd>{pack.playCount.toLocaleString()}</dd>
-            </div>
-          )}
+          ) : null}
         </dl>
         <p className="pack-card__credit">Creator: {pack.creator}</p>
         <div className="pack-card__actions">

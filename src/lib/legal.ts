@@ -1,11 +1,11 @@
-/** Shared legal / store-compliance copy — update contact email before launch. */
+/** Shared legal / store-compliance copy. */
 
 export const APP_NAME = "Imitation Star";
-export const APP_DOMAIN = "imitation-star.vercel.app";
-export const APP_ORIGIN = `https://${APP_DOMAIN}`;
+export const APP_DOMAIN = "imitation.site";
+export const APP_ORIGIN = `https://www.${APP_DOMAIN}`;
 
-export const SUPPORT_EMAIL = "support@imitationstar.app";
-export const LEGAL_EMAIL = "legal@imitationstar.app";
+export const SUPPORT_EMAIL = `support@${APP_DOMAIN}`;
+export const LEGAL_EMAIL = `legal@${APP_DOMAIN}`;
 
 /** ISO date string shown on policy pages. */
 export const LEGAL_EFFECTIVE_DATE = "2026-08-26";

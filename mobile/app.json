@@ -6,6 +6,17 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#FF595E",
+          "sounds": [],
+          "mode": "production"
+        }
+      ]
+    ],
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -18,7 +29,8 @@
         "NSMicrophoneUsageDescription": "Imitation Star needs the microphone to record your dubs.",
         "NSCameraUsageDescription": "Imitation Star may use the camera for profile photos.",
         "NSPhotoLibraryUsageDescription": "Imitation Star may access photos for pack thumbnails.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["remote-notification"]
       }
     },
     "android": {
@@ -30,18 +42,21 @@
       "permissions": [
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS",
-        "INTERNET"
+        "INTERNET",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "appUrl": "https://imitation-star.vercel.app",
-      "privacyPolicyUrl": "https://imitation-star.vercel.app/privacy",
-      "termsOfServiceUrl": "https://imitation-star.vercel.app/terms",
-      "supportUrl": "https://imitation-star.vercel.app/support",
-      "supportEmail": "support@imitationstar.app",
+      "appUrl": "https://www.imitation.site",
+      "privacyPolicyUrl": "https://www.imitation.site/privacy",
+      "termsOfServiceUrl": "https://www.imitation.site/terms",
+      "supportUrl": "https://www.imitation.site/support",
+      "supportEmail": "support@imitation.site",
       "eas": {
         "projectId": "5e1be3f9-4dce-4373-af61-593a87689c3f"
       }
