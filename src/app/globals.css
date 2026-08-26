@@ -700,6 +700,7 @@ a.brutal-btn.block {
 }
 
 .cv-main-menu--desktop .cv-main-menu__brand {
+  position: relative;
   background: var(--es-coral);
   border-color: var(--es-black);
 }
@@ -710,15 +711,69 @@ a.brutal-btn.block {
 
 .cv-main-menu--desktop .cv-main-menu__hero-lockup {
   align-items: center;
+  padding-left: 1.75rem;
+}
+
+.cv-main-menu--desktop .landing-hero__brand-title {
+  line-height: 0.88;
+  color: var(--es-white);
+  font-size: clamp(4.5rem, 11vw, 8rem);
+  /* Hard offset like the hero, but thicker for the larger menu type */
+  text-shadow:
+    1px 1px 0 var(--es-black),
+    2px 2px 0 var(--es-black),
+    3px 3px 0 var(--es-black),
+    4px 4px 0 var(--es-black),
+    5px 5px 0 var(--es-black),
+    6px 6px 0 var(--es-black),
+    7px 7px 0 var(--es-black),
+    8px 8px 0 var(--es-black);
 }
 
 .cv-main-menu--desktop .cv-main-menu__hero-eyebrow {
   color: var(--es-pollen);
+  font-size: 0.85rem;
+  letter-spacing: 0.24em;
+  margin-bottom: 0.15rem;
 }
 
-.cv-main-menu--desktop .landing-hero__brand-title {
-  line-height: 0.92;
-  color: var(--es-white);
+.cv-main-menu__hero-brand {
+  gap: 1rem;
+}
+
+.cv-main-menu--desktop .cv-main-menu__hero-brand {
+  gap: 2.75rem;
+}
+
+.cv-main-menu--desktop .cv-main-menu__mascot {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 0.25rem 0.15rem 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.cv-main-menu--desktop .cv-main-menu__mascot-img {
+  display: block;
+  width: auto;
+  /* Explicit size — was limited by parent height:100%, so max-height alone never grew it */
+  height: min(50.4vh, 336px);
+  max-width: min(57.6%, 312px);
+  object-fit: contain;
+  object-position: bottom right;
+  margin-right: 3.5rem;
+  /* Knock out the solid black artboard against the coral menu */
+  mix-blend-mode: screen;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.cv-main-menu--desktop .cv-main-menu__pack {
+  position: relative;
+  z-index: 1;
 }
 
 .cv-main-menu--desktop .cv-main-menu__pack-label {

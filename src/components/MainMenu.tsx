@@ -33,10 +33,10 @@ export default function MainMenu({
       {/* Left — branding & active pack */}
       <div className="cv-main-menu__brand flex-1 flex flex-col p-4 sm:p-6 min-w-0 min-h-0 border-b-3 sm:border-b-0 sm:border-r-3 border-black">
         <div className="cv-main-menu__hero-lockup flex items-start justify-between gap-3">
-          <div className="cv-main-menu__hero-brand flex items-center gap-4 min-w-0">
+          <div className="cv-main-menu__hero-brand flex items-center min-w-0">
             <LogoMark
               className={`object-contain shrink-0 ${
-                isNativeApp ? "w-10 h-10" : "w-14 h-14 sm:w-16 sm:h-16"
+                isNativeApp ? "w-10 h-10" : "w-24 h-24 sm:w-28 sm:h-28"
               }`}
               title="Imitation Star"
             />
@@ -48,7 +48,7 @@ export default function MainMenu({
                 className={`font-brand landing-hero__brand-title text-white ${
                   isNativeApp
                     ? "text-2xl sm:text-3xl"
-                    : "text-4xl sm:text-5xl lg:text-6xl"
+                    : "text-7xl sm:text-8xl lg:text-9xl"
                 }`}
               >
                 Imitation Star
@@ -84,9 +84,21 @@ export default function MainMenu({
           ) : null}
         </div>
 
+        {!isNativeApp ? (
+          <div className="cv-main-menu__mascot" aria-hidden="true">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/images/menu-singer.png"
+              alt=""
+              className="cv-main-menu__mascot-img"
+              draggable={false}
+            />
+          </div>
+        ) : null}
+
         <div
           className={`cv-main-menu__pack ${
-            isNativeApp ? "mt-auto" : "mt-auto pt-6"
+            isNativeApp ? "mt-auto" : "pt-2"
           }`}
         >
           <div className="cv-active-pack">

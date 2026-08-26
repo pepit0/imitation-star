@@ -3,7 +3,7 @@ const MENU_ICONS = {
   multiplayer: "/menu-icons/profile-male.png",
   packs: "/menu-icons/film-player.png",
   upload: "/menu-icons/video-camera.png",
-  forum: "/menu-icons/film-player.png",
+  forum: "/menu-icons/globe.svg",
   profile: "/menu-icons/profile-male.png",
 } as const;
 
