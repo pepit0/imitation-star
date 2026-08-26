@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import MenuModeIcon from "@/components/MenuModeIcon";
 import MenuShootingStar from "@/components/MenuShootingStar";
 import { useAuth } from "@/components/auth/AuthProvider";
+import ProfileAvatar from "@/components/profile/ProfileAvatar";
 import { useIsNativeApp } from "@/hooks/useIsNativeApp";
 import type { DubPack, GameMode } from "@/lib/types";
 
@@ -20,22 +22,55 @@ export default function MainMenu({
 }: MainMenuProps) {
   const isNativeApp = useIsNativeApp();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, profile, loading } = useAuth();
 
   return (
-    <div className="flex flex-col sm:flex-row h-full bg-es-screen retro-pixel-grid overflow-hidden">
+    <div
+      className={`flex flex-col sm:flex-row h-full bg-es-screen retro-pixel-grid overflow-hidden${
+        isNativeApp ? " cv-main-menu--native" : ""
+      }`}
+    >
       {/* Left — branding & active pack */}
-      <div className="flex-1 flex flex-col p-4 sm:p-6 min-w-0 min-h-0 border-b-3 sm:border-b-0 sm:border-r-3 border-black">
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-es-brand">
-          <span className="inline-flex gap-0.5" aria-hidden="true">
-            <span className="w-1 h-3 bg-es-brand" />
-            <span className="w-1 h-3 bg-es-brand opacity-70" />
-            <span className="w-1 h-3 bg-es-brand opacity-40" />
-          </span>
-          Dub Stage
+      <div className="cv-main-menu__brand flex-1 flex flex-col p-4 sm:p-6 min-w-0 min-h-0 border-b-3 sm:border-b-0 sm:border-r-3 border-black">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-es-brand min-w-0">
+            <span className="inline-flex gap-0.5" aria-hidden="true">
+              <span className="w-1 h-3 bg-es-brand" />
+              <span className="w-1 h-3 bg-es-brand opacity-70" />
+              <span className="w-1 h-3 bg-es-brand opacity-40" />
+            </span>
+            Dub Stage
+          </div>
+
+          {isNativeApp && !loading ? (
+            user ? (
+              <Link
+                href="/profile"
+                className="header-account shrink-0"
+                title={profile?.displayName ?? "Your profile"}
+              >
+                <ProfileAvatar
+                  icon={profile?.avatarIcon}
+                  color={profile?.avatarColor}
+                  name={profile?.displayName ?? user.email ?? "?"}
+                  className="header-account__avatar"
+                />
+                <span className="header-account__label">
+                  {profile?.displayName ?? "Profile"}
+                </span>
+              </Link>
+            ) : (
+              <Link
+                href="/login?next=/profile"
+                className="brutal-btn brutal-btn-sm bg-white px-3 py-2 text-xs shrink-0"
+              >
+                Sign in
+              </Link>
+            )
+          ) : null}
         </div>
 
-        <div className="mt-4 sm:mt-6">
+        <div className="cv-main-menu__title mt-4 sm:mt-6">
           <h1 className="font-title text-7xl sm:text-8xl lg:text-[7.5rem] leading-[0.85] tracking-tight uppercase">
             <span className="text-white block">Imitation</span>
             <span className="text-es-yellow block cv-menu-brand-star">
@@ -43,12 +78,12 @@ export default function MainMenu({
               <MenuShootingStar />
             </span>
           </h1>
-          <p className="mt-3 text-[10px] sm:text-xs text-es-text-secondary uppercase tracking-[0.25em]">
+          <p className="cv-main-menu__tagline mt-3 text-[10px] sm:text-xs text-es-text-secondary uppercase tracking-[0.25em]">
             Listen · Dub · Share · Rate
           </p>
         </div>
 
-        <div className="mt-auto pt-6">
+        <div className="cv-main-menu__pack mt-auto pt-6">
           <div className="cv-active-pack">
             <div
               className="cv-active-pack-thumb overflow-hidden"
@@ -77,7 +112,7 @@ export default function MainMenu({
       </div>
 
       {/* Right — mode buttons */}
-      <div className="w-full sm:w-[min(42%,320px)] shrink-0 flex flex-col p-3 sm:p-4 gap-2 sm:gap-3 bg-es-darker overflow-y-auto">
+      <div className="cv-main-menu__modes w-full sm:w-[min(42%,320px)] shrink-0 flex flex-col p-3 sm:p-4 gap-2 sm:gap-3 bg-es-darker overflow-y-auto">
         <button
           type="button"
           onClick={() => onSelectMode("single")}
@@ -136,22 +171,6 @@ export default function MainMenu({
               </span>
               <span className="cv-menu-btn-sub">
                 Rate takes and see what the community posted
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                router.push(user ? "/profile" : "/login?next=/profile")
-              }
-              className="cv-menu-btn cv-menu-btn-outline flex-1 min-h-[5rem]"
-            >
-              <span className="cv-menu-btn-head">
-                <MenuModeIcon mode="profile" />
-                <span className="cv-menu-btn-title">Profile</span>
-              </span>
-              <span className="cv-menu-btn-sub">
-                {user ? "Your account, posts, and multiplayer" : "Sign in to manage your profile"}
               </span>
             </button>
 
