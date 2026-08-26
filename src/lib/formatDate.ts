@@ -43,3 +43,36 @@ export function formatForumPostDate(
   }
   return `${month} ${day}`;
 }
+
+function formatLocalTime(d: Date): string {
+  return d.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** Human-readable save timestamp for pack progress (e.g. "Today at 3:45 PM"). */
+export function formatProgressSavedAt(
+  iso: string,
+  now: Date = new Date()
+): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+
+  const today = startOfLocalDay(now);
+  const savedDay = startOfLocalDay(date);
+  const diffDays = Math.round(
+    (today.getTime() - savedDay.getTime()) / (24 * 60 * 60 * 1000)
+  );
+  const time = formatLocalTime(date);
+
+  if (diffDays === 0) return `Today at ${time}`;
+  if (diffDays === 1) return `Yesterday at ${time}`;
+
+  const month = MONTHS[date.getMonth()] ?? "";
+  const day = date.getDate();
+  if (date.getFullYear() !== now.getFullYear()) {
+    return `${month} ${day}, ${date.getFullYear()} at ${time}`;
+  }
+  return `${month} ${day} at ${time}`;
+}

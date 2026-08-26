@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { DUB_PACKS_BUCKET } from "@/lib/cloudPacks";
 import { SUPPORT_EMAIL } from "@/lib/legal";
 import type { DubPostTake } from "@/lib/cloudPosts";
+import type { CloudProgressTake } from "@/lib/cloudPackProgress";
 
 export type DeleteAccountResult =
   | { ok: true }
@@ -106,6 +107,18 @@ export async function deleteAccount(): Promise<DeleteAccountResult> {
   await admin.from("collab_invites").delete().eq("user_id", userId);
   await admin.from("dub_posts").delete().eq("author_id", userId);
   await admin.from("dub_packs").delete().eq("owner_id", userId);
+
+  const { data: progressRows } = await admin
+    .from("pack_progress")
+    .select("takes")
+    .eq("user_id", userId);
+  for (const row of progressRows ?? []) {
+    for (const take of (row.takes as CloudProgressTake[] | null) ?? []) {
+      if (take.audioPath) storagePaths.push(take.audioPath);
+    }
+  }
+  await admin.from("pack_progress").delete().eq("user_id", userId);
+
   await admin.from("follows").delete().eq("follower_id", userId);
   await admin.from("follows").delete().eq("following_id", userId);
   await admin.from("profiles").delete().eq("id", userId);

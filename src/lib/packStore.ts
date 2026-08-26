@@ -11,9 +11,11 @@ import {
 } from "./cloudPacks";
 
 const DB_NAME = "imitation-star";
-const DB_VERSION = 2;
+const DB_VERSION = 4;
 const PACK_STORE = "packs";
 const BLOB_STORE = "blobs";
+export const PENDING_DUB_STORE = "pending_dubs";
+export const PACK_PROGRESS_STORE = "pack_progress";
 
 export const UPLOAD_MAX_BYTES = 95 * 1024 * 1024; // 95 MB
 export const UPLOAD_MAX_DURATION_SEC = 5 * 60; // 5 minutes
@@ -39,9 +41,13 @@ export interface StoredUserPack {
   vocalsKey?: string;
   /** lineId → blob key for per-line reference slices */
   lineRefKeys?: Record<string, string>;
+  /** User-created pack vs downloaded for offline play */
+  storageKind?: "owned" | "cached";
+  cachedFrom?: "cloud" | "builtin";
+  ownerId?: string;
 }
 
-function openDb(): Promise<IDBDatabase> {
+export function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onerror = () => reject(req.error ?? new Error("IndexedDB open failed"));
@@ -54,11 +60,17 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(BLOB_STORE)) {
         db.createObjectStore(BLOB_STORE, { keyPath: "key" });
       }
+      if (!db.objectStoreNames.contains(PENDING_DUB_STORE)) {
+        db.createObjectStore(PENDING_DUB_STORE, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(PACK_PROGRESS_STORE)) {
+        db.createObjectStore(PACK_PROGRESS_STORE, { keyPath: "packId" });
+      }
     };
   });
 }
 
-function idbReq<T>(req: IDBRequest<T>): Promise<T> {
+export function idbReq<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error ?? new Error("IndexedDB request failed"));
@@ -179,7 +191,9 @@ export async function loadUserDubPacks(): Promise<DubPack[]> {
       backingTrackUrl,
       vocalsStemUrl,
       lines,
-      source: "user",
+      source: s.storageKind === "cached" ? "cached" : "user",
+      ownerId: s.ownerId,
+      offlineReady: true,
     });
   }
 
@@ -258,9 +272,14 @@ export async function loadUserPackMediaForEdit(
 /**
  * Local packs + community cloud packs (deduped).
  * Prefer local copy when the same id exists (faster, editable offline).
+ * When offline, returns only device-stored packs.
  */
 export async function loadBrowsablePacks(): Promise<DubPack[]> {
   const local = await loadUserDubPacks();
+  const offline =
+    typeof navigator !== "undefined" && navigator.onLine === false;
+  if (offline) return local;
+
   let cloud: DubPack[] = [];
   try {
     cloud = await listCloudDubPacks();
@@ -271,9 +290,149 @@ export async function loadBrowsablePacks(): Promise<DubPack[]> {
   const localIds = new Set(local.map((p) => p.id));
   const merged = [...local];
   for (const pack of cloud) {
-    if (!localIds.has(pack.id)) merged.push(pack);
+    if (!localIds.has(pack.id)) {
+      merged.push({ ...pack, offlineReady: false });
+    }
   }
   return merged;
+}
+
+export async function hasLocalPackCopy(packId: string): Promise<boolean> {
+  const stored = await listStoredPacks();
+  return stored.some((p) => p.id === packId);
+}
+
+export async function listLocalPackIds(): Promise<Set<string>> {
+  const stored = await listStoredPacks();
+  return new Set(stored.map((p) => p.id));
+}
+
+/** Save a cloud/builtin pack to IndexedDB for offline singleplayer. */
+export async function cachePackForOffline(input: {
+  pack: DubPack;
+  thumbBlob: Blob;
+  videoBlob?: Blob | null;
+  backingBlob?: Blob | null;
+  vocalsBlob?: Blob | null;
+  lineRefBlobs?: Record<string, Blob>;
+}): Promise<DubPack> {
+  const { pack } = input;
+  const existing = (await listStoredPacks()).find((p) => p.id === pack.id);
+  if (existing?.storageKind === "owned") {
+    const owned = (await loadUserDubPacks()).find((p) => p.id === pack.id);
+    if (owned) return owned;
+  }
+
+  const id = pack.id;
+  const videoKey = input.videoBlob ? `${id}:video` : undefined;
+  const thumbKey = `${id}:thumb`;
+  const backingKey = input.backingBlob ? `${id}:backing` : undefined;
+  const vocalsKey = input.vocalsBlob ? `${id}:vocals` : undefined;
+
+  if (existing?.lineRefKeys) {
+    for (const key of Object.values(existing.lineRefKeys)) {
+      await deleteBlob(key);
+    }
+  }
+  if (existing?.backingKey && !backingKey) await deleteBlob(existing.backingKey);
+  if (existing?.vocalsKey && !vocalsKey) await deleteBlob(existing.vocalsKey);
+  if (existing?.videoKey && !videoKey) await deleteBlob(existing.videoKey);
+
+  if (videoKey && input.videoBlob) await saveBlob(videoKey, input.videoBlob);
+  await saveBlob(thumbKey, input.thumbBlob);
+  if (backingKey && input.backingBlob) await saveBlob(backingKey, input.backingBlob);
+  if (vocalsKey && input.vocalsBlob) await saveBlob(vocalsKey, input.vocalsBlob);
+
+  const lineRefKeys: Record<string, string> = {};
+  const hydratedLines: DubLine[] = [];
+
+  for (const line of pack.lines) {
+    let referenceAudioUrl: string | undefined;
+    const importedRef = input.lineRefBlobs?.[line.id];
+    if (importedRef && importedRef.size > 0) {
+      const refKey = `${id}:line:${line.id}`;
+      await saveBlob(refKey, importedRef);
+      lineRefKeys[line.id] = refKey;
+      referenceAudioUrl = URL.createObjectURL(importedRef);
+    } else if (input.vocalsBlob) {
+      try {
+        const slice = await sliceAudioBlob(
+          input.vocalsBlob,
+          line.startMs,
+          line.endMs
+        );
+        const refKey = `${id}:line:${line.id}`;
+        await saveBlob(refKey, slice);
+        lineRefKeys[line.id] = refKey;
+        referenceAudioUrl = URL.createObjectURL(slice);
+      } catch {
+        /* skip */
+      }
+    }
+    hydratedLines.push({ ...line, referenceAudioUrl });
+  }
+
+  const cachedFrom: "cloud" | "builtin" =
+    pack.source === "builtin" ? "builtin" : "cloud";
+
+  const stored: StoredUserPack = {
+    id,
+    title: pack.title,
+    description: pack.description,
+    creator: pack.creator,
+    tags: pack.tags.length ? pack.tags : ["download"],
+    nsfw: pack.nsfw ?? false,
+    playCount: pack.playCount,
+    createdAt: pack.createdAt,
+    thumbnailColor: pack.thumbnailColor,
+    lines: stripLineUrls(hydratedLines),
+    videoKey,
+    thumbKey,
+    backingKey,
+    vocalsKey,
+    lineRefKeys:
+      Object.keys(lineRefKeys).length > 0 ? lineRefKeys : undefined,
+    storageKind: "cached",
+    cachedFrom,
+    ownerId: pack.ownerId,
+  };
+
+  await saveStoredPack(stored);
+
+  return {
+    id,
+    title: stored.title,
+    description: stored.description,
+    creator: stored.creator,
+    clipCount: hydratedLines.length,
+    tags: stored.tags,
+    nsfw: stored.nsfw,
+    playCount: stored.playCount,
+    createdAt: stored.createdAt,
+    thumbnailColor: stored.thumbnailColor,
+    thumbnailUrl: URL.createObjectURL(input.thumbBlob),
+    videoUrl: input.videoBlob
+      ? URL.createObjectURL(input.videoBlob)
+      : undefined,
+    backingTrackUrl: input.backingBlob
+      ? URL.createObjectURL(input.backingBlob)
+      : undefined,
+    vocalsStemUrl: input.vocalsBlob
+      ? URL.createObjectURL(input.vocalsBlob)
+      : undefined,
+    lines: hydratedLines,
+    source: "cached",
+    ownerId: pack.ownerId,
+    offlineReady: true,
+  };
+}
+
+/** Remove a downloaded copy only — never touches cloud rows. */
+export async function removeCachedPack(packId: string): Promise<void> {
+  const stored = await listStoredPacks();
+  const found = stored.find((p) => p.id === packId);
+  if (!found || found.storageKind !== "cached") return;
+  await deleteStoredPack(packId);
 }
 
 /**
@@ -282,6 +441,11 @@ export async function loadBrowsablePacks(): Promise<DubPack[]> {
  * also attempt a cloud delete (no-op when the row is missing).
  */
 export async function deleteBrowsablePack(pack: DubPack): Promise<void> {
+  if (pack.source === "cached") {
+    await removeCachedPack(pack.id);
+    return;
+  }
+
   await deleteStoredPack(pack.id);
 
   if (pack.source !== "cloud" && !isUuid(pack.id)) return;
@@ -419,6 +583,7 @@ export async function persistUploadedPack(input: {
     vocalsKey,
     lineRefKeys:
       Object.keys(lineRefKeys).length > 0 ? lineRefKeys : undefined,
+    storageKind: "owned",
   };
 
   await saveStoredPack(stored);

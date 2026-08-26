@@ -16,10 +16,12 @@ export type ProfileRow = {
   handle: string | null;
   followers_count: number;
   total_stars: number;
+  xp?: number | null;
+  packs_completed?: number | null;
 };
 
 export const PROFILE_SELECT =
-  "id, display_name, bio, avatar_color, avatar_icon, handle, followers_count, total_stars";
+  "id, display_name, bio, avatar_color, avatar_icon, handle, followers_count, total_stars, xp, packs_completed";
 
 export function profileFromRow(row: ProfileRow): UserProfile {
   return {
@@ -31,5 +33,7 @@ export function profileFromRow(row: ProfileRow): UserProfile {
     handle: formatHandle(row.handle),
     followersCount: row.followers_count,
     totalStars: row.total_stars,
+    xp: Math.max(0, Number(row.xp) || 0),
+    packsCompleted: Math.max(0, Number(row.packs_completed) || 0),
   };
 }

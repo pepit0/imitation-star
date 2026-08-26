@@ -1,12 +1,9 @@
 "use client";
 
 import Header from "@/components/Header";
-import { useIsNativeApp } from "@/hooks/useIsNativeApp";
 
-/** Global site header — hidden in the Expo / store native shell. */
+/** Global site header — hidden in the Expo shell via CSS (`html[data-native-app="1"]`). */
 export default function SiteHeader() {
-  const isNativeApp = useIsNativeApp();
-  if (isNativeApp) return null;
   return (
     <div data-site-header="">
       <Header />

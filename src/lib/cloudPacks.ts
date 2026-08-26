@@ -284,6 +284,12 @@ export async function publishPackToCloud(input: {
       packId: pack.id,
       packTitle: pack.title,
     });
+    try {
+      const { awardPackPublish } = await import("@/lib/xp");
+      await awardPackPublish(pack.id);
+    } catch {
+      /* best-effort */
+    }
   }
 
   return pack;

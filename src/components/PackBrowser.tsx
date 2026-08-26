@@ -4,6 +4,7 @@ import {
   isCommunityPack,
   type PackRankLookup,
 } from "@/lib/social/packRankings";
+import type { PackProgressSummary } from "@/lib/packProgress";
 import type { DubPack, SortOption } from "@/lib/types";
 import AppBackButton from "./AppBackButton";
 import PackCard from "./PackCard";
@@ -19,15 +20,28 @@ interface PackBrowserProps {
   onHideNsfwChange: (hide: boolean) => void;
   onSelectPack: (pack: DubPack) => void;
   onDeletePack?: (pack: DubPack) => void | Promise<void>;
+  onDownloadPack?: (pack: DubPack) => void | Promise<void>;
+  onRemoveDownload?: (pack: DubPack) => void | Promise<void>;
+  downloadedPackIds?: Set<string>;
+  downloadingPackId?: string | null;
+  downloadProgress?: string | null;
+  progressByPackId?: Map<string, PackProgressSummary>;
+  online?: boolean;
   currentUserId?: string;
   onBack: () => void;
   title?: string;
 }
 
 function canDeletePack(pack: DubPack, userId: string | undefined): boolean {
+  if (pack.source === "cached") return false;
   if (pack.source === "user") return true;
   if (pack.source === "cloud" && userId && pack.ownerId === userId) return true;
   return false;
+}
+
+function canDownloadPack(pack: DubPack, online: boolean): boolean {
+  if (!online) return false;
+  return pack.source === "cloud" || pack.source === "builtin";
 }
 
 export default function PackBrowser({
@@ -40,11 +54,20 @@ export default function PackBrowser({
   onHideNsfwChange,
   onSelectPack,
   onDeletePack,
+  onDownloadPack,
+  onRemoveDownload,
+  downloadedPackIds,
+  downloadingPackId,
+  downloadProgress,
+  progressByPackId,
+  online = true,
   currentUserId,
   rankById,
   onBack,
   title,
 }: PackBrowserProps) {
+  const offlineDownloadedOnly = !online;
+
   return (
     <div className="flex flex-col h-full bg-es-cream text-black">
       <div className="app-stage-topbar brutal-border border-t-0 border-x-0 bg-es-brand text-white px-4 py-3 flex items-center gap-3 overflow-visible">
@@ -56,6 +79,12 @@ export default function PackBrowser({
           {packs.length} packs
         </span>
       </div>
+
+      {!online ? (
+        <p className="offline-banner" role="status">
+          You&apos;re offline — only packs saved to this device are shown.
+        </p>
+      ) : null}
 
       <div className="p-3 sm:p-4 space-y-3 border-b-3 border-black shrink-0">
         <input
@@ -104,13 +133,20 @@ export default function PackBrowser({
       <div className="flex-1 overflow-y-auto p-3 sm:p-4">
         {packs.length === 0 && (
           <p className="text-center text-gray-500 py-8">
-            No packs found. Try a different search.
+            {offlineDownloadedOnly
+              ? "No downloaded packs yet. Connect to download packs for offline play."
+              : "No packs found. Try a different search."}
           </p>
         )}
         <div className="pack-card-grid pack-card-grid--dense">
           {packs.map((pack) => {
             const ranked =
               rankById && isCommunityPack(pack) ? rankById.get(pack.id) : null;
+            const downloaded =
+              downloadedPackIds?.has(pack.id) ||
+              pack.source === "cached" ||
+              pack.source === "user";
+            const packProgress = progressByPackId?.get(pack.id);
             return (
               <PackCard
                 key={pack.id}
@@ -118,7 +154,14 @@ export default function PackBrowser({
                 compact
                 onSelect={onSelectPack}
                 onDelete={onDeletePack}
+                onDownload={onDownloadPack}
+                onRemoveDownload={onRemoveDownload}
                 deletable={canDeletePack(pack, currentUserId)}
+                downloadable={canDownloadPack(pack, online) && !downloaded}
+                downloaded={downloaded}
+                downloading={downloadingPackId === pack.id}
+                downloadProgress={downloadProgress}
+                progressSummary={packProgress}
                 rank={ranked?.rank}
                 aggregateStarCount={
                   ranked != null ? ranked.aggregateStarCount : undefined

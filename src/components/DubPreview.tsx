@@ -7,10 +7,12 @@ import { playAudioBlob } from "@/lib/audio";
 import { DubMixer } from "@/lib/dubMix";
 import { awardPackComplete } from "@/lib/xp";
 import { publishDubPost } from "@/lib/cloudPosts";
+import { savePendingDub } from "@/lib/offline/pendingDubs";
 import { formatTimecode } from "@/lib/packStore";
 import { useAuth } from "@/components/auth/AuthProvider";
 import AuthModal from "@/components/auth/AuthModal";
 import AppBackButton from "@/components/AppBackButton";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import PlayIcon from "@/components/PlayIcon";
 
 interface DubPreviewProps {
@@ -18,6 +20,8 @@ interface DubPreviewProps {
   recordings: RecordedLine[];
   /** Unique per finished recording run; Retry clears it so a new finish can award again. */
   xpSessionId?: string | null;
+  online?: boolean;
+  onSavedOffline?: () => void;
   onRestart: () => void;
   onBackToMenu: () => void;
 }
@@ -42,6 +46,8 @@ export default function DubPreview({
   pack,
   recordings,
   xpSessionId,
+  online = true,
+  onSavedOffline,
   onRestart,
   onBackToMenu,
 }: DubPreviewProps) {
@@ -57,7 +63,11 @@ export default function DubPreview({
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [publishedId, setPublishedId] = useState<string | null>(null);
+  const [savedOfflineId, setSavedOfflineId] = useState<string | null>(null);
+  const [savingOffline, setSavingOffline] = useState(false);
+  const [saveOfflineError, setSaveOfflineError] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
 
   useEffect(() => {
     if (user) setAuthOpen(false);
@@ -107,7 +117,7 @@ export default function DubPreview({
   useEffect(() => {
     if (!xpSessionId || awardedRef.current) return;
     awardedRef.current = true;
-    awardPackComplete(`${pack.id}:${xpSessionId}`);
+    void awardPackComplete(`${pack.id}:${xpSessionId}`);
   }, [pack.id, xpSessionId]);
 
   const handlePlayPause = useCallback(async () => {
@@ -167,7 +177,11 @@ export default function DubPreview({
 
   const handlePublish = useCallback(async () => {
     if (!user) return;
-    if (publishedId) return;
+    if (publishedId || savedOfflineId) return;
+    if (!online) {
+      setPublishError("You're offline. Save this dub to your device and upload when you're back online.");
+      return;
+    }
     setPublishing(true);
     setPublishError(null);
     try {
@@ -196,7 +210,40 @@ export default function DubPreview({
     } finally {
       setPublishing(false);
     }
-  }, [user, publishedId, pack, caption, recordings]);
+  }, [user, publishedId, savedOfflineId, online, pack, caption, recordings]);
+
+  const handleSaveOffline = useCallback(async () => {
+    if (savedOfflineId || publishedId) return;
+    setSavingOffline(true);
+    setSaveOfflineError(null);
+    try {
+      const saved = await savePendingDub({
+        packId: pack.id,
+        packTitle: pack.title,
+        packThumbnailColor: pack.thumbnailColor,
+        caption,
+        lines: pack.lines,
+        recordings,
+        authorId: user?.id,
+      });
+      setSavedOfflineId(saved.id);
+      onSavedOffline?.();
+    } catch (e) {
+      setSaveOfflineError(
+        e instanceof Error ? e.message : "Could not save dub to device."
+      );
+    } finally {
+      setSavingOffline(false);
+    }
+  }, [
+    savedOfflineId,
+    publishedId,
+    pack,
+    caption,
+    recordings,
+    user?.id,
+    onSavedOffline,
+  ]);
 
   return (
     <div className="dub-end">
@@ -316,6 +363,15 @@ export default function DubPreview({
             Posted to the forum.{" "}
             <Link href="/forum">View feed →</Link>
           </p>
+        ) : savedOfflineId ? (
+          <p className="dub-end__posted" role="status">
+            Saved on this device.
+            {online
+              ? user
+                ? " It will upload to the forum automatically, or tap Upload saved dubs on the menu."
+                : " Sign in when online to publish it."
+              : " Upload when you're back online."}
+          </p>
         ) : (
           <>
             {user ? (
@@ -347,6 +403,11 @@ export default function DubPreview({
                 {publishError}
               </p>
             ) : null}
+            {saveOfflineError ? (
+              <p className="dub-end__error" role="alert">
+                {saveOfflineError}
+              </p>
+            ) : null}
           </>
         )}
 
@@ -360,14 +421,24 @@ export default function DubPreview({
               Sign in to publish
             </button>
           ) : null}
-          {user && !publishedId ? (
+          {user && !publishedId && !savedOfflineId ? (
             <button
               type="button"
               className="brutal-btn dub-end__publish"
-              disabled={publishing}
+              disabled={publishing || !online}
               onClick={() => void handlePublish()}
             >
-              {publishing ? "Publishing…" : "Publish"}
+              {publishing ? "Publishing…" : online ? "Publish" : "Publish (offline)"}
+            </button>
+          ) : null}
+          {!publishedId && !savedOfflineId ? (
+            <button
+              type="button"
+              className="brutal-btn dub-end__save-offline"
+              disabled={savingOffline}
+              onClick={() => void handleSaveOffline()}
+            >
+              {savingOffline ? "Saving…" : "Save to device"}
             </button>
           ) : null}
           <button
@@ -377,7 +448,16 @@ export default function DubPreview({
           >
             Retry
           </button>
-          <AppBackButton onClick={onBackToMenu} className="dub-end__menu">
+          <AppBackButton
+            onClick={() => {
+              if (!publishedId && !savedOfflineId && recordings.length > 0) {
+                setLeaveOpen(true);
+                return;
+              }
+              onBackToMenu();
+            }}
+            className="dub-end__menu"
+          >
             ← Menu
           </AppBackButton>
         </div>
@@ -390,6 +470,22 @@ export default function DubPreview({
         defaultMode="signup"
         nextPath="/play"
       />
+
+      {leaveOpen ? (
+        <ConfirmDialog
+          title="Leave without saving?"
+          message="Your recorded dub will be discarded if you go back to the menu."
+          cancelLabel="Stay"
+          confirmLabel="Leave anyway"
+          tone="red"
+          fixed
+          onCancel={() => setLeaveOpen(false)}
+          onConfirm={() => {
+            setLeaveOpen(false);
+            onBackToMenu();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

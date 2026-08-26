@@ -10,10 +10,18 @@ interface PackCardProps {
   pack: DubPack;
   onSelect?: (pack: DubPack) => void;
   onDelete?: (pack: DubPack) => void | Promise<void>;
+  onDownload?: (pack: DubPack) => void | Promise<void>;
+  onRemoveDownload?: (pack: DubPack) => void | Promise<void>;
   href?: string;
   compact?: boolean;
   /** When set, shows Delete for the signed-in owner. */
   deletable?: boolean;
+  downloadable?: boolean;
+  downloaded?: boolean;
+  downloading?: boolean;
+  downloadProgress?: string | null;
+  /** Saved singleplayer progress on this pack. */
+  progressSummary?: { recordedCount: number; lineIndex: number };
   /** Forum-style rank badge for community packs (read-only). */
   rank?: number;
   /** Combined stars from all forum posts using this pack. */
@@ -48,11 +56,13 @@ function PackCover({
   compact,
   rank,
   aggregateStarCount,
+  downloaded,
 }: {
   pack: DubPack;
   compact?: boolean;
   rank?: number;
   aggregateStarCount?: number;
+  downloaded?: boolean;
 }) {
   const isRemoteHttp =
     pack.thumbnailUrl.startsWith("http://") ||
@@ -101,6 +111,11 @@ function PackCover({
           Community
         </span>
       ) : null}
+      {downloaded || pack.source === "cached" ? (
+        <span className="pack-card__badge pack-card__badge--offline">
+          On device
+        </span>
+      ) : null}
       {pack.popular ? (
         <span className="pack-card__badge">Popular</span>
       ) : null}
@@ -139,16 +154,28 @@ export default function PackCard({
   pack,
   onSelect,
   onDelete,
+  onDownload,
+  onRemoveDownload,
   href,
   compact = false,
   deletable = false,
+  downloadable = false,
+  downloaded = false,
+  downloading = false,
+  downloadProgress,
+  progressSummary,
   rank,
   aggregateStarCount,
 }: PackCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const showDelete = deletable && Boolean(onDelete);
+  const showDownload = downloadable && Boolean(onDownload) && !downloaded;
+  const showRemoveDownload =
+    downloaded && pack.source === "cached" && Boolean(onRemoveDownload);
   const className = `pack-card ${compact ? "pack-card--compact" : ""}`;
 
   const handleDeleteConfirm = async () => {
@@ -167,6 +194,22 @@ export default function PackCard({
     }
   };
 
+  const handleRemoveConfirm = async () => {
+    if (!onRemoveDownload || removing) return;
+    setRemoving(true);
+    setDeleteError(null);
+    try {
+      await onRemoveDownload(pack);
+      setConfirmRemove(false);
+    } catch (e) {
+      setDeleteError(
+        e instanceof Error ? e.message : "Could not remove download."
+      );
+    } finally {
+      setRemoving(false);
+    }
+  };
+
   const meta = (
     <>
       <PackCover
@@ -174,6 +217,7 @@ export default function PackCard({
         compact={compact}
         rank={rank}
         aggregateStarCount={aggregateStarCount}
+        downloaded={downloaded}
       />
       <div className="pack-card__body">
         <h3 className="pack-card__title">{pack.title}</h3>
@@ -198,7 +242,15 @@ export default function PackCard({
             </div>
           ) : null}
         </dl>
-        <p className="pack-card__credit">Creator: {pack.creator}</p>
+        <p className="pack-card__credit">
+          Creator: {pack.creator}
+          {progressSummary ? (
+            <span className="pack-card__progress">
+              {" "}
+              · {progressSummary.recordedCount} lines saved
+            </span>
+          ) : null}
+        </p>
         <div className="pack-card__actions">
           {href ? (
             <Link href={href} className="pack-card__play">
@@ -213,6 +265,29 @@ export default function PackCard({
               Play now
             </button>
           )}
+          {showDownload ? (
+            <button
+              type="button"
+              className="pack-card__download"
+              disabled={downloading}
+              onClick={() => void onDownload?.(pack)}
+            >
+              {downloading ? downloadProgress ?? "Downloading…" : "Download"}
+            </button>
+          ) : null}
+          {showRemoveDownload ? (
+            <button
+              type="button"
+              className="pack-card__remove-download"
+              disabled={removing}
+              onClick={() => {
+                setDeleteError(null);
+                setConfirmRemove(true);
+              }}
+            >
+              Remove
+            </button>
+          ) : null}
           {showDelete ? (
             <button
               type="button"
@@ -242,6 +317,20 @@ export default function PackCard({
           onConfirm={() => void handleDeleteConfirm()}
           onCancel={() => {
             if (!deleting) setConfirmDelete(false);
+          }}
+        />
+      ) : null}
+      {confirmRemove ? (
+        <ConfirmDialog
+          title="Remove download?"
+          message="This deletes the pack from your device. You can download it again when online."
+          confirmLabel="Remove"
+          tone="red"
+          busy={removing}
+          fixed
+          onConfirm={() => void handleRemoveConfirm()}
+          onCancel={() => {
+            if (!removing) setConfirmRemove(false);
           }}
         />
       ) : null}

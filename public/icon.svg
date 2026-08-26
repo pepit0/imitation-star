@@ -12,10 +12,6 @@
     stroke-width="5"
     stroke-linejoin="round"
   />
-  <g transform="translate(256 252) scale(13.5) translate(-18 -17)">
-    <rect x="14.25" y="8.5" width="7.5" height="11.5" rx="3.75" fill="#000"/>
-    <path d="M13.35 18.25a4.65 3.75 0 0 0 9.3 0" fill="none" stroke="#000" stroke-width="1.2" stroke-linecap="round"/>
-    <rect x="17.1" y="20.5" width="1.8" height="2.75" fill="#000"/>
-    <rect x="13.75" y="23" width="8.5" height="1.35" rx="0.4" fill="#000"/>
-  </g>
+  <!-- Mic PNG matches LogoMark / homepage hero — run scripts/generate-app-icons.mjs for raster exports -->
+  <image href="/images/logo-mic.png" x="112" y="112" width="288" height="288" />
 </svg>

@@ -3,14 +3,12 @@
 import { useEffect, useState } from "react";
 import { syncNativeAppFlag } from "@/lib/nativeApp";
 
-function readInitialNativeFlag(): boolean {
-  if (typeof window === "undefined") return false;
-  return syncNativeAppFlag();
-}
-
-/** True when launched from the Expo / store shell (`?client=app`). */
+/**
+ * True when launched from the Expo / store shell (`?client=app`).
+ * Starts false during SSR + hydration, then syncs on mount to avoid mismatches.
+ */
 export function useIsNativeApp(): boolean {
-  const [isNative, setIsNative] = useState(readInitialNativeFlag);
+  const [isNative, setIsNative] = useState(false);
 
   useEffect(() => {
     setIsNative(syncNativeAppFlag());

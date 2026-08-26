@@ -30,8 +30,10 @@ export interface DubPack {
   backingTrackUrl?: string;
   /** Full vocals stem (Demucs) for waveform / slicing */
   vocalsStemUrl?: string;
-  /** Built-in sample, local IndexedDB, or community cloud pack */
-  source?: "builtin" | "user" | "cloud";
+  /** Built-in sample, local IndexedDB, community cloud, or offline cache */
+  source?: "builtin" | "user" | "cloud" | "cached";
+  /** True when pack media is stored on device for offline play */
+  offlineReady?: boolean;
   /** Set for cloud packs (and mirrored on published local packs) */
   ownerId?: string;
 }
@@ -42,6 +44,7 @@ export type GamePhase =
   | "splash"
   | "menu"
   | "pack-select"
+  | "single-resume"
   | "scene-preview"
   | "recording"
   | "line-review"

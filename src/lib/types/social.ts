@@ -10,6 +10,9 @@ export type UserProfile = {
   totalStars: number;
   /** Optional handle for display */
   handle?: string;
+  /** Cloud XP (signed-in users) */
+  xp?: number;
+  packsCompleted?: number;
 };
 
 export type DubPostTake = {

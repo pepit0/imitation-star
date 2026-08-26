@@ -4,7 +4,8 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import GameStage from "@/components/GameStage";
 import { useIsNativeApp } from "@/hooks/useIsNativeApp";
-import { getRank, loadXp, type XpState } from "@/lib/xp";
+import { getRank, loadXp, refreshXp, type XpState } from "@/lib/xp";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 const QUESTS = [
   "Pick a pack",
@@ -19,22 +20,21 @@ function PlayContent() {
   const initialMode =
     intent === "upload" ? ("upload" as const) : ("single" as const);
   const isNativeApp = useIsNativeApp();
+  const { user } = useAuth();
   const [xpState, setXpState] = useState<XpState>({ xp: 0, packsCompleted: 0 });
 
-  const refreshXp = useCallback(() => {
+  const refreshHudXp = useCallback(() => {
     setXpState(loadXp());
   }, []);
 
   useEffect(() => {
-    refreshXp();
-    const onXp = () => refreshXp();
+    void refreshXp().then((state) => setXpState(state));
+    const onXp = () => refreshHudXp();
     window.addEventListener("imitation-star:xp", onXp);
-    window.addEventListener("storage", onXp);
     return () => {
       window.removeEventListener("imitation-star:xp", onXp);
-      window.removeEventListener("storage", onXp);
     };
-  }, [refreshXp]);
+  }, [user?.id, refreshHudXp]);
 
   const rank = getRank(xpState.xp);
   const fillPct = Math.round(rank.progress * 100);
@@ -49,7 +49,7 @@ function PlayContent() {
         <div className="play-hud shrink-0">
           <div className="play-hud__identity">
             <p className="play-hud__eyebrow">Session</p>
-            <p className="play-hud__name">{rank.title}</p>
+            <p className="play-hud__name">{rank.label}</p>
           </div>
           <div
             className="play-hud__xp"

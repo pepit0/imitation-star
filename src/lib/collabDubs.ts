@@ -594,6 +594,13 @@ export async function publishCollabDub(input: {
     })
     .eq("id", input.collabId);
 
+  try {
+    const { awardCollabPublish } = await import("@/lib/xp");
+    await awardCollabPublish(input.collabId);
+  } catch {
+    /* best-effort */
+  }
+
   return post.id;
 }
 

@@ -25,6 +25,7 @@ import {
   listenForNativePushToken,
   registerNativePushToken,
 } from "@/lib/pushClient";
+import { clearXpCache, refreshXp, setXpCache } from "@/lib/xp";
 
 type AuthContextValue = {
   user: User | null;
@@ -94,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCurrentUserId(user?.id ?? null);
     if (!user) {
       setProfile(null);
+      clearXpCache();
       return;
     }
     let cancelled = false;
@@ -103,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return Promise.all([
           loadFollowingIds(user.id),
           loadStarredIds(user.id),
+          refreshXp(),
         ]);
       })
       .then(() => {
@@ -110,7 +113,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return fetchProfile(user.id);
       })
       .then((next) => {
-        if (!cancelled && next !== undefined) setProfile(next);
+        if (cancelled || next === undefined) return;
+        setProfile(next);
+        if (typeof next.xp === "number") {
+          setXpCache(
+            {
+              xp: next.xp,
+              packsCompleted: next.packsCompleted ?? 0,
+            },
+            user.id
+          );
+        }
       });
 
     if (isNativeApp()) {
@@ -130,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
+    clearXpCache();
   }, []);
 
   const value = useMemo(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import type { DubPack, DubLine, RecordedLine } from "@/lib/types";
 import {
@@ -13,10 +13,19 @@ import {
 } from "@/lib/waveform";
 import SoundWave from "./SoundWave";
 import AppBackButton from "./AppBackButton";
+import {
+  clearPackProgress,
+  loadPackProgress,
+  savePackProgress,
+} from "@/lib/packProgress";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import ConfirmDialog from "./ConfirmDialog";
 
 interface RecordingStudioProps {
   pack: DubPack;
   mode: "single" | "multiplayer";
+  skipSavedProgress?: boolean;
   onBack: () => void;
   onComplete: (recordings: RecordedLine[]) => void;
 }
@@ -24,12 +33,28 @@ interface RecordingStudioProps {
 export default function RecordingStudio({
   pack,
   mode,
+  skipSavedProgress = false,
   onBack,
   onComplete,
 }: RecordingStudioProps) {
+  const { user } = useAuth();
+  const online = useOnlineStatus();
+  const progressCtx = useMemo(
+    () => ({
+      userId: user?.id,
+      online,
+      packTitle: pack.title,
+    }),
+    [user?.id, online, pack.title]
+  );
   const [lineIndex, setLineIndex] = useState(0);
   const [recordings, setRecordings] = useState<RecordedLine[]>([]);
   const recordingsRef = useRef<RecordedLine[]>([]);
+  const savedSnapshotRef = useRef<string | null>(null);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [savingProgress, setSavingProgress] = useState(false);
+  const [progressLoaded, setProgressLoaded] = useState(false);
+  const [savedProgressAt, setSavedProgressAt] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [status, setStatus] = useState(
     "Ready. Press Replay to hear the line or Record to perform it."
@@ -78,6 +103,65 @@ export default function RecordingStudio({
   useEffect(() => {
     recordingsRef.current = recordings;
   }, [recordings]);
+
+  const progressSnapshot = useCallback((recs: RecordedLine[]) => {
+    return recs
+      .map((r) => `${r.lineId}:${Math.round(r.durationMs)}`)
+      .sort()
+      .join("|");
+  }, []);
+
+  const isProgressSaved = useCallback(() => {
+    const saved = savedSnapshotRef.current;
+    if (!saved) return false;
+    return saved === progressSnapshot(recordingsRef.current);
+  }, [progressSnapshot]);
+
+  const markProgressSaved = useCallback(
+    (recs: RecordedLine[], updatedAt: string) => {
+      savedSnapshotRef.current = progressSnapshot(recs);
+      setSavedProgressAt(updatedAt);
+    },
+    [progressSnapshot]
+  );
+
+  useEffect(() => {
+    if (mode !== "single") {
+      setProgressLoaded(true);
+      return;
+    }
+    if (skipSavedProgress) {
+      setProgressLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    void loadPackProgress(pack.id, progressCtx).then((saved) => {
+      if (cancelled || !saved) {
+        setProgressLoaded(true);
+        return;
+      }
+      setRecordings(saved.recordings);
+      setLineIndex(
+        Math.max(0, Math.min(saved.lineIndex, pack.lines.length - 1))
+      );
+      markProgressSaved(saved.recordings, saved.updatedAt);
+      setStatus(
+        `Resumed — ${saved.recordings.length} of ${totalLines} lines saved.`
+      );
+      setProgressLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    mode,
+    pack.id,
+    pack.lines.length,
+    totalLines,
+    progressCtx,
+    markProgressSaved,
+    skipSavedProgress,
+  ]);
 
   useEffect(() => {
     isRecordingRef.current = isRecording;
@@ -678,6 +762,29 @@ export default function RecordingStudio({
     stopLinePlayback,
   ]);
 
+  const handleSaveProgress = useCallback(async () => {
+    if (mode !== "single" || recordingsRef.current.length === 0) return;
+    setSavingProgress(true);
+    try {
+      await savePackProgress(
+        pack.id,
+        lineIndex,
+        recordingsRef.current,
+        progressCtx
+      );
+      markProgressSaved(recordingsRef.current, new Date().toISOString());
+      setStatus(
+        user && online
+          ? `Progress saved to your profile — ${recordingsRef.current.length} line${recordingsRef.current.length === 1 ? "" : "s"}.`
+          : `Progress saved on this device — ${recordingsRef.current.length} line${recordingsRef.current.length === 1 ? "" : "s"}.`
+      );
+    } catch {
+      setStatus("Could not save progress. Try again.");
+    } finally {
+      setSavingProgress(false);
+    }
+  }, [mode, pack.id, lineIndex, progressCtx, user, online, markProgressSaved]);
+
   const handleNext = useCallback(() => {
     if (!currentRecording) return;
 
@@ -686,6 +793,7 @@ export default function RecordingStudio({
       setLineIndex((i) => i + 1);
       setStatus("Ready. Press Replay to hear the line or Record to perform it.");
     } else {
+      void clearPackProgress(pack.id, progressCtx);
       onComplete(recordingsRef.current);
     }
   }, [
@@ -693,19 +801,65 @@ export default function RecordingStudio({
     currentRecording,
     lineIndex,
     totalLines,
+    pack.id,
+    progressCtx,
     onComplete,
   ]);
+
+  const requestLeave = useCallback(() => {
+    abortAllPlayback();
+    const hasRecordings = recordingsRef.current.length > 0;
+    const unsaved =
+      mode === "single" ? hasRecordings && !isProgressSaved() : hasRecordings;
+    if (unsaved) {
+      setLeaveOpen(true);
+      return;
+    }
+    onBack();
+  }, [abortAllPlayback, mode, onBack, isProgressSaved]);
+
+  const confirmLeave = useCallback(() => {
+    setLeaveOpen(false);
+    abortAllPlayback();
+    onBack();
+  }, [abortAllPlayback, onBack]);
+
+  const saveAndLeave = useCallback(async () => {
+    if (mode === "single" && recordingsRef.current.length > 0) {
+      setSavingProgress(true);
+      try {
+        await savePackProgress(
+          pack.id,
+          lineIndex,
+          recordingsRef.current,
+          progressCtx
+        );
+        markProgressSaved(recordingsRef.current, new Date().toISOString());
+      } catch {
+        setSavingProgress(false);
+        setStatus("Could not save progress. Try again.");
+        return;
+      }
+      setSavingProgress(false);
+    }
+    setLeaveOpen(false);
+    abortAllPlayback();
+    onBack();
+  }, [abortAllPlayback, mode, onBack, pack.id, lineIndex, progressCtx, markProgressSaved]);
+
+  const canSaveProgress =
+    mode === "single" &&
+    progressLoaded &&
+    recordings.length > 0 &&
+    !isRecording &&
+    !isPlayingTake &&
+    !isProgressSaved();
 
   return (
     <div className="cv-recording flex flex-col h-full min-h-0 overflow-hidden bg-es-screen text-white">
       <div className="app-stage-topbar px-3 sm:px-4 py-2 border-b-3 border-black shrink-0">
         <div className="flex items-start gap-2 sm:gap-3">
-          <AppBackButton
-            onClick={() => {
-              abortAllPlayback();
-              onBack();
-            }}
-          />
+          <AppBackButton onClick={requestLeave} />
           <div className="flex-1 min-w-0">
             <p className="text-[10px] uppercase tracking-wider text-es-brand">
               {modeEyebrow}
@@ -717,7 +871,23 @@ export default function RecordingStudio({
           <p className="text-[10px] sm:text-xs text-es-text-secondary uppercase shrink-0 pt-1">
             Line {lineIndex + 1} / {totalLines}
           </p>
+          {canSaveProgress ? (
+            <button
+              type="button"
+              className="brutal-btn brutal-btn-sm bg-es-blue text-white shrink-0 text-[10px] px-2 py-1"
+              disabled={savingProgress}
+              onClick={() => void handleSaveProgress()}
+            >
+              {savingProgress ? "Saving…" : "Save"}
+            </button>
+          ) : null}
         </div>
+        {mode === "single" && savedProgressAt && isProgressSaved() ? (
+          <p className="text-[10px] text-es-phosphor mt-1 normal-case">
+            {recordings.length} line{recordings.length === 1 ? "" : "s"} saved
+            {user && online ? " to your profile" : " on this device"}
+          </p>
+        ) : null}
       </div>
 
       <div className="cv-recording__body flex flex-col lg:flex-row flex-1 min-h-0">
@@ -923,6 +1093,34 @@ export default function RecordingStudio({
           {status}
         </p>
       </div>
+
+      {leaveOpen ? (
+        <ConfirmDialog
+          title="Leave this dub?"
+          message={
+            mode === "single"
+              ? "Save progress to pick up this pack later, or leave without saving to discard your takes."
+              : "You have recorded lines that will be lost if you leave now."
+          }
+          cancelLabel="Stay"
+          secondaryLabel={
+            mode === "single" &&
+            recordingsRef.current.length > 0 &&
+            !isProgressSaved()
+              ? "Save & leave"
+              : undefined
+          }
+          confirmLabel="Leave anyway"
+          tone="red"
+          busy={savingProgress}
+          fixed
+          onSecondary={
+            mode === "single" ? () => void saveAndLeave() : undefined
+          }
+          onCancel={() => setLeaveOpen(false)}
+          onConfirm={confirmLeave}
+        />
+      ) : null}
     </div>
   );
 }

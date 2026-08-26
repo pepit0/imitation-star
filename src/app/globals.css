@@ -1098,6 +1098,7 @@ html[data-native-app="1"] .collab-setup {
 }
 
 html[data-native-app="1"] .collab-sent,
+html[data-native-app="1"] .single-resume,
 html[data-native-app="1"] .collab-recording--done {
   padding-top: calc(1.5rem + env(safe-area-inset-top, 0px));
 }
@@ -3250,6 +3251,11 @@ html[data-native-app="1"] .collab-recording--done {
   letter-spacing: normal;
 }
 
+.pack-card__progress {
+  color: var(--es-blue);
+  font-weight: 600;
+}
+
 .pack-card__actions {
   display: flex;
   gap: 0.5rem;
@@ -3300,6 +3306,86 @@ html[data-native-app="1"] .collab-recording--done {
 .pack-card__delete:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.pack-card__download,
+.pack-card__remove-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--es-blue);
+  color: var(--es-white);
+  border: 2px solid var(--es-black);
+  box-shadow: 2px 2px 0 var(--es-black);
+  border-radius: var(--es-btn-radius);
+  padding: 0.375rem 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  font: inherit;
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+
+.pack-card__remove-download {
+  background: #64748b;
+}
+
+.pack-card__download:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.pack-card__badge--offline {
+  background: var(--es-blue);
+  color: var(--es-white);
+}
+
+.offline-banner {
+  margin: 0;
+  padding: 0.65rem 1rem;
+  background: #fef3c7;
+  border-bottom: 3px solid var(--es-black);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.offline-banner--menu {
+  border: 2px solid var(--es-black);
+  box-shadow: 2px 2px 0 var(--es-black);
+  border-radius: var(--es-btn-radius);
+}
+
+.pending-uploads-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.65rem 0.75rem;
+  background: var(--es-pollen);
+  border: 2px solid var(--es-black);
+  box-shadow: 2px 2px 0 var(--es-black);
+  border-radius: var(--es-btn-radius);
+  font-size: 0.75rem;
+}
+
+.pending-uploads-bar p {
+  margin: 0;
+  flex: 1;
+  min-width: 10rem;
+}
+
+.pending-uploads-message {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--es-lilac);
+}
+
+.dub-end__save-offline {
+  background: var(--es-blue);
+  color: var(--es-white);
 }
 
 .pack-card__delete-error {
@@ -5397,6 +5483,96 @@ button.profile-post-row {
 }
 
 .collab-sent__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  width: min(100%, 18rem);
+}
+
+.single-resume {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  background: var(--es-cream);
+  color: #111;
+}
+
+.single-resume__eyebrow {
+  margin: 0;
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--es-brand);
+}
+
+.single-resume__pack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.single-resume__thumb {
+  width: 5.5rem;
+  height: 5.5rem;
+  border: var(--border-width) solid var(--es-black);
+  box-shadow: 3px 3px 0 var(--es-black);
+}
+
+.single-resume__title {
+  margin: 0;
+  font-family: var(--font-title), monospace;
+  font-size: 1.35rem;
+  text-transform: uppercase;
+  max-width: 20rem;
+}
+
+.single-resume__stats {
+  margin: 1.25rem 0 0;
+  padding: 0;
+  width: min(100%, 20rem);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.single-resume__stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.625rem 0.75rem;
+  border: var(--border-width) solid var(--es-black);
+  background: #fff;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.single-resume__stat dt {
+  margin: 0;
+  color: #555;
+  font-weight: 500;
+}
+
+.single-resume__stat dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}
+
+.single-resume__message {
+  margin: 1rem 0 0;
+  max-width: 24rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: #444;
+}
+
+.single-resume__actions {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;

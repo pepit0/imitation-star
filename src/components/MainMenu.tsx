@@ -7,18 +7,33 @@ import MenuModeIcon from "@/components/MenuModeIcon";
 import { useAuth } from "@/components/auth/AuthProvider";
 import ProfileAvatar from "@/components/profile/ProfileAvatar";
 import { useIsNativeApp } from "@/hooks/useIsNativeApp";
+import type { PackProgressSummary } from "@/lib/packProgress";
 import type { DubPack, GameMode } from "@/lib/types";
 
 interface MainMenuProps {
   packCount: number;
   activePack: DubPack;
+  packProgress?: PackProgressSummary;
   onSelectMode: (mode: GameMode) => void;
+  online?: boolean;
+  pendingUploadCount?: number;
+  uploadingPending?: boolean;
+  pendingMessage?: string | null;
+  onUploadPending?: () => void;
+  onDismissPendingMessage?: () => void;
 }
 
 export default function MainMenu({
   packCount,
   activePack,
+  packProgress,
   onSelectMode,
+  online = true,
+  pendingUploadCount = 0,
+  uploadingPending = false,
+  pendingMessage,
+  onUploadPending,
+  onDismissPendingMessage,
 }: MainMenuProps) {
   const isNativeApp = useIsNativeApp();
   const router = useRouter();
@@ -124,7 +139,7 @@ export default function MainMenu({
             </div>
             <div className="min-w-0 flex-1 py-0.5">
               <p className="cv-main-menu__pack-label text-[10px] sm:text-xs uppercase tracking-wider">
-                Active Pack
+                Active Pack{packProgress ? " — Resume in singleplayer" : ""}
               </p>
               <p className="text-base sm:text-xl font-title truncate normal-case text-white mt-1 leading-tight">
                 {activePack.title}
@@ -143,6 +158,46 @@ export default function MainMenu({
           isNativeApp ? "" : "sm:w-[min(56%,427px)]"
         }`}
       >
+        {!online ? (
+          <p className="offline-banner offline-banner--menu" role="status">
+            Offline mode — play downloaded packs only.
+          </p>
+        ) : null}
+
+        {pendingUploadCount > 0 ? (
+          <div className="pending-uploads-bar">
+            <p>
+              {pendingUploadCount} saved dub
+              {pendingUploadCount === 1 ? "" : "s"} waiting to upload
+            </p>
+            <button
+              type="button"
+              className="brutal-btn brutal-btn-sm"
+              disabled={!online || uploadingPending || !user}
+              onClick={() => onUploadPending?.()}
+            >
+              {uploadingPending
+                ? "Uploading…"
+                : user
+                  ? "Upload now"
+                  : "Sign in to upload"}
+            </button>
+          </div>
+        ) : null}
+
+        {pendingMessage ? (
+          <p className="pending-uploads-message" role="status">
+            {pendingMessage}{" "}
+            <button
+              type="button"
+              className="auth-link"
+              onClick={() => onDismissPendingMessage?.()}
+            >
+              Dismiss
+            </button>
+          </p>
+        ) : null}
+
         <button
           type="button"
           onClick={() => onSelectMode("single")}
