@@ -5,6 +5,7 @@ import {
   type PackRankLookup,
 } from "@/lib/social/packRankings";
 import type { DubPack, SortOption } from "@/lib/types";
+import AppBackButton from "./AppBackButton";
 import PackCard from "./PackCard";
 
 interface PackBrowserProps {
@@ -47,13 +48,7 @@ export default function PackBrowser({
   return (
     <div className="flex flex-col h-full bg-es-cream text-black">
       <div className="brutal-border border-t-0 border-x-0 bg-es-brand text-white px-4 py-3 flex items-center gap-3 overflow-visible">
-        <button
-          type="button"
-          onClick={onBack}
-          className="brutal-btn brutal-btn-sm bg-white text-black px-3 py-1.5 text-xs shrink-0"
-        >
-          ← Back
-        </button>
+        <AppBackButton onClick={onBack} />
         <h2 className="font-title text-sm sm:text-base uppercase tracking-wide flex-1">
           {title ?? "Dub Packs"}
         </h2>

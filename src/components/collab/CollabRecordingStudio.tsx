@@ -5,6 +5,7 @@ import type { CollabDetail } from "@/lib/types/collab";
 import { dubPackFromSnapshot, submitLineTake } from "@/lib/collabDubs";
 import type { RecordedLine } from "@/lib/types";
 import RecordingStudio from "@/components/RecordingStudio";
+import AppBackButton from "@/components/AppBackButton";
 
 type CollabRecordingStudioProps = {
   collab: CollabDetail;
@@ -74,9 +75,7 @@ export default function CollabRecordingStudio({
         <p className="collab-recording__sub">
           Waiting on other players — check progress on your profile.
         </p>
-        <button type="button" className="brutal-btn brutal-btn-sm" onClick={onBack}>
-          Back
-        </button>
+        <AppBackButton onClick={onBack} />
       </div>
     );
   }

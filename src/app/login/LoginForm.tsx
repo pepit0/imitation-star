@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import AppBackButton from "@/components/AppBackButton";
+import { useIsNativeApp } from "@/hooks/useIsNativeApp";
 import { createClient } from "@/lib/supabase/client";
 import { isValidHandle, sanitizeHandle } from "@/lib/handle";
 import { validateDisplayName } from "@/lib/profanity";
@@ -12,6 +13,7 @@ type Mode = "signin" | "signup";
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isNativeApp = useIsNativeApp();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,8 +26,8 @@ export default function LoginForm() {
   const nextPath = useMemo(() => {
     const next = searchParams.get("next");
     if (next && next.startsWith("/") && !next.startsWith("//")) return next;
-    return "/";
-  }, [searchParams]);
+    return isNativeApp ? "/play" : "/";
+  }, [searchParams, isNativeApp]);
 
   const authError = searchParams.get("error");
   const cleanHandle = sanitizeHandle(handle);
@@ -273,9 +275,9 @@ export default function LoginForm() {
           )}
         </p>
 
-        <Link href="/" className="auth-card__back">
-          ← Back to home
-        </Link>
+        <AppBackButton href={isNativeApp ? "/play" : "/"}>
+          {isNativeApp ? "← Game menu" : "← Back to home"}
+        </AppBackButton>
       </div>
     </div>
   );

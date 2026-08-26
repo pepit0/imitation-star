@@ -9,6 +9,7 @@ import { awardPackComplete } from "@/lib/xp";
 import { publishDubPost } from "@/lib/cloudPosts";
 import { formatTimecode } from "@/lib/packStore";
 import { useAuth } from "@/components/auth/AuthProvider";
+import AppBackButton from "@/components/AppBackButton";
 import PlayIcon from "@/components/PlayIcon";
 
 interface DubPreviewProps {
@@ -355,13 +356,9 @@ export default function DubPreview({
           >
             Retry
           </button>
-          <button
-            type="button"
-            onClick={onBackToMenu}
-            className="brutal-btn dub-end__menu"
-          >
-            Menu
-          </button>
+          <AppBackButton onClick={onBackToMenu} className="dub-end__menu">
+            ← Menu
+          </AppBackButton>
         </div>
       </footer>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import AppBackButton from "@/components/AppBackButton";
 import type { DubPack } from "@/lib/types";
 import type { LineAssigneeMap } from "@/lib/types/collab";
 import type { UserProfile } from "@/lib/types/social";
@@ -83,9 +84,7 @@ export default function CollabLineAssignment({
   return (
     <div className="collab-setup">
       <div className="collab-setup__header">
-        <button type="button" className="brutal-btn brutal-btn-sm" onClick={onBack}>
-          ← Back
-        </button>
+        <AppBackButton onClick={onBack} />
         <div>
           <p className="collab-setup__eyebrow">Multiplayer collab</p>
           <h2 className="collab-setup__title">{pack.title}</h2>

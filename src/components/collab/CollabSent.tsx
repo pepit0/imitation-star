@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import AppBackButton from "@/components/AppBackButton";
 
 type CollabSentProps = {
   packTitle: string;
@@ -20,13 +21,7 @@ export default function CollabSent({ packTitle, onBackToMenu }: CollabSentProps)
         <Link href="/profile?tab=multiplayer" className="brutal-btn bg-es-brand text-white">
           Go to Profile → Multiplayer
         </Link>
-        <button
-          type="button"
-          className="brutal-btn brutal-btn-sm"
-          onClick={onBackToMenu}
-        >
-          Back to menu
-        </button>
+        <AppBackButton onClick={onBackToMenu}>← Menu</AppBackButton>
       </div>
     </div>
   );

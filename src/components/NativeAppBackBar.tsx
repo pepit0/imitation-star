@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import AppBackButton from "@/components/AppBackButton";
 import { useIsNativeApp } from "@/hooks/useIsNativeApp";
+import { usePathname } from "next/navigation";
 
 /**
- * Minimal back control for Forum / Profile / Login when the site Header is hidden.
+ * Top back bar for Forum / Profile / Login when the site Header is hidden.
  */
 export default function NativeAppBackBar() {
   const isNativeApp = useIsNativeApp();
@@ -15,13 +15,8 @@ export default function NativeAppBackBar() {
   if (pathname === "/play" || pathname?.startsWith("/play/")) return null;
 
   return (
-    <div className="shrink-0 flex items-center gap-3 px-3 py-2 border-b-3 border-black bg-es-darker">
-      <Link
-        href="/play"
-        className="text-xs uppercase tracking-wider font-bold text-white px-3 py-1.5 bg-es-brand border-2 border-black"
-      >
-        ← Game menu
-      </Link>
+    <div className="app-back-bar">
+      <AppBackButton href="/play">← Game menu</AppBackButton>
     </div>
   );
 }

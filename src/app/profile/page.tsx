@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import AppBackButton from "@/components/AppBackButton";
 import { useAuth } from "@/components/auth/AuthProvider";
 import ProfileAvatar from "@/components/profile/ProfileAvatar";
 import ProfileXpBar from "@/components/profile/ProfileXpBar";
@@ -219,9 +219,7 @@ function ProfilePageInner() {
             Sign out
           </button>
 
-          <Link href="/forum" className="auth-card__back">
-            ← Back to forum
-          </Link>
+          <AppBackButton href="/forum">← Back to forum</AppBackButton>
         </div>
 
         <ProfileTabs authorId={user.id} tab={tab} onTabChange={setTab} />
