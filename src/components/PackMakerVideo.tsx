@@ -233,6 +233,9 @@ const PackMakerVideo = forwardRef<PackMakerVideoHandle, PackMakerVideoProps>(
           const ogvMod = await loadOgvModule();
           if (cancelled || !containerRef.current) return;
 
+          // Absolute base so WASM/workers resolve on www + preview hosts.
+          ogvMod.OGVLoader.base = `${window.location.origin}/ogv`;
+
           player = new ogvMod.OGVPlayer();
           ogvPlayerRef.current = player;
           player.className = "pm-video pm-video--ogv";

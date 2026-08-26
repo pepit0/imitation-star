@@ -1,6 +1,7 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
 import { DUB_PACKS_BUCKET } from "@/lib/cloudPacks";
+import { uploadConvertOgv } from "@/lib/uploadConvertOgv";
 import { loadBlob, saveBlob } from "./packStore";
 
 /** Matches convert-ogv direct multipart limit. */
@@ -13,9 +14,11 @@ let ffmpegInstance: FFmpeg | null = null;
 let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
 let serverFfmpegAvailable: boolean | null = null;
 let serverStorageConvert = false;
+let serverBlobConvert = false;
 let serverLocalDirectLarge = false;
 let serverDirectMaxBytes = SERVER_DIRECT_MAX_BYTES;
 let serverMaxBytes = SERVER_MAX_BYTES;
+let serverSupabaseUploadMaxBytes = 50 * 1024 * 1024;
 
 /** Thrown when the editor should play the source OGV locally (no MP4 proxy). */
 export class UseOgvPreviewError extends Error {
@@ -69,16 +72,25 @@ export async function checkServerOgvConvertAvailable(): Promise<boolean> {
       maxBytes?: number;
       maxDirectBytes?: number;
       storageConvert?: boolean;
+      blobConvert?: boolean;
+      supabaseUploadMaxBytes?: number;
       localDirectLarge?: boolean;
     };
     serverFfmpegAvailable = Boolean(data.available);
     serverStorageConvert = Boolean(data.storageConvert);
+    serverBlobConvert = Boolean(data.blobConvert);
     serverLocalDirectLarge = Boolean(data.localDirectLarge);
     if (typeof data.maxBytes === "number" && data.maxBytes > 0) {
       serverMaxBytes = data.maxBytes;
     }
     if (typeof data.maxDirectBytes === "number" && data.maxDirectBytes > 0) {
       serverDirectMaxBytes = data.maxDirectBytes;
+    }
+    if (
+      typeof data.supabaseUploadMaxBytes === "number" &&
+      data.supabaseUploadMaxBytes > 0
+    ) {
+      serverSupabaseUploadMaxBytes = data.supabaseUploadMaxBytes;
     }
     return serverFfmpegAvailable;
   } catch {
@@ -235,10 +247,66 @@ async function transcodeViaDirectUpload(
 }
 
 /**
- * Large OGV path: upload to Supabase Storage → server converts from storage.
- * Bypasses Vercel’s ~100 MB request body limit (needed for ~120 MB packs).
- * Works with signed upload (service role) or public ogv-convert/ policy.
+ * Large OGV path:
+ * - ≤ ~50 MB: Supabase Storage (Free plan hard cap)
+ * - > 50 MB: Vercel Blob (bypasses Supabase Free limit for 120 MB+ packs)
  */
+async function transcodeViaVercelBlob(
+  input: Blob,
+  options: TranscodeOgvOptions
+): Promise<Blob> {
+  const { onProgress, signal } = options;
+  const mb = (input.size / (1024 * 1024)).toFixed(0);
+  onProgress?.(5, `Uploading ${mb} MB OGV (Vercel Blob)…`);
+
+  const { upload } = await import("@vercel/blob/client");
+  const pathname = `ogv-convert/${crypto.randomUUID()}.ogv`;
+
+  const uploaded = await upload(pathname, input, {
+    access: "public",
+    handleUploadUrl: "/api/packs/convert-ogv/blob",
+    contentType: input.type || "video/ogg",
+    multipart: true,
+    abortSignal: signal,
+    onUploadProgress: ({ percentage }) => {
+      const pct = Math.round(percentage);
+      const mapped = 5 + Math.round((pct / 100) * 40);
+      onProgress?.(
+        mapped,
+        pct < 100
+          ? `Uploading ${mb} MB OGV… ${pct}%`
+          : "Upload complete — converting on server…"
+      );
+    },
+  });
+
+  if (signal?.aborted) {
+    throw new DOMException("Transcode aborted", "AbortError");
+  }
+
+  onProgress?.(50, "Converting OGV on server…");
+  let encodePulse: ReturnType<typeof setInterval> | null = null;
+  let encodePct = 52;
+  encodePulse = setInterval(() => {
+    encodePct = Math.min(90, encodePct + 1);
+    onProgress?.(encodePct, "Encoding 640p preview on server…");
+  }, 1500);
+
+  try {
+    const convertRes = await fetch("/api/packs/convert-ogv", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ blobUrl: uploaded.url }),
+      signal,
+    });
+    if (!convertRes.ok) throw new Error(await parseError(convertRes));
+    onProgress?.(95, "Downloading MP4 preview…");
+    return await convertRes.blob();
+  } finally {
+    if (encodePulse) clearInterval(encodePulse);
+  }
+}
+
 async function transcodeViaStorage(
   input: Blob,
   options: TranscodeOgvOptions
@@ -249,6 +317,16 @@ async function transcodeViaStorage(
     throw new Error(
       `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB — max is ${Math.floor(serverMaxBytes / (1024 * 1024))} MB. Convert to MP4 offline or use the OGV preview player.`
     );
+  }
+
+  // Supabase Free rejects anything above ~50 MB (even TUS). Use Vercel Blob.
+  if (input.size > serverSupabaseUploadMaxBytes) {
+    if (!serverBlobConvert) {
+      throw new UseOgvPreviewError(
+        `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB. Supabase Free caps uploads at 50 MB — using the local OGV player. Add Vercel Blob for MP4 preview of large packs.`
+      );
+    }
+    return transcodeViaVercelBlob(input, options);
   }
 
   onProgress?.(3, "Preparing large-file upload…");
@@ -278,32 +356,31 @@ async function transcodeViaStorage(
 
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
-  const contentType = input.type || "video/ogg";
 
-  if (prepared.mode === "signed" && prepared.token) {
-    const { error: uploadError } = await supabase.storage
+  try {
+    await uploadConvertOgv(prepared.storagePath, input, {
+      contentType: input.type || "video/ogg",
+      signedToken:
+        prepared.mode === "signed" && prepared.token
+          ? prepared.token
+          : undefined,
+      signal,
+      onProgress: (uploadPct) => {
+        const mapped = 8 + Math.round((uploadPct / 100) * 35);
+        onProgress?.(
+          mapped,
+          uploadPct < 100
+            ? `Uploading ${mb} MB OGV… ${uploadPct}%`
+            : "Upload complete — converting on server…"
+        );
+      },
+    });
+  } catch (err) {
+    void supabase.storage
       .from(DUB_PACKS_BUCKET)
-      .uploadToSignedUrl(prepared.storagePath, prepared.token, input, {
-        contentType,
-        upsert: false,
-      });
-    if (uploadError) {
-      throw new Error(
-        `Could not upload OGV to storage: ${uploadError.message}`
-      );
-    }
-  } else {
-    const { error: uploadError } = await supabase.storage
-      .from(DUB_PACKS_BUCKET)
-      .upload(prepared.storagePath, input, {
-        contentType,
-        upsert: false,
-      });
-    if (uploadError) {
-      throw new Error(
-        `Could not upload OGV to storage: ${uploadError.message}. If this persists, check dub-packs size limit (≥250 MB) and video/ogg mime types.`
-      );
-    }
+      .remove([prepared.storagePath])
+      .catch(() => undefined);
+    throw err;
   }
 
   if (signal?.aborted) {
@@ -337,7 +414,6 @@ async function transcodeViaStorage(
     return await convertRes.blob();
   } finally {
     if (encodePulse) clearInterval(encodePulse);
-    // Server also deletes; client best-effort cleanup for orphans.
     void supabase.storage
       .from(DUB_PACKS_BUCKET)
       .remove([prepared.storagePath])
@@ -350,22 +426,18 @@ async function transcodeViaServer(
   inputName: string,
   options: TranscodeOgvOptions
 ): Promise<Blob> {
-  // Production (Vercel) cannot accept ~120 MB POST bodies. Shipping that OGV to
-  // Storage just for a local pack-maker preview fights "edit locally until publish".
-  // Use the in-browser OGV player instead; localhost still converts directly.
-  if (input.size > serverDirectMaxBytes && !serverLocalDirectLarge) {
-    throw new UseOgvPreviewError(
-      `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB — using the local OGV player for editing (no upload until you publish).`
-    );
-  }
-
+  // Localhost: large files POST directly to Next+FFmpeg.
+  // Production: Vercel body cap ~100 MB — Blob (>50 MB) or Supabase (≤50 MB).
   if (input.size > serverDirectMaxBytes) {
-    if (!serverStorageConvert) {
-      throw new UseOgvPreviewError(
-        `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB — using the local OGV player for editing.`
-      );
+    if (serverLocalDirectLarge) {
+      return transcodeViaDirectUpload(input, inputName, options);
     }
-    return transcodeViaStorage(input, options);
+    if (serverBlobConvert || serverStorageConvert) {
+      return transcodeViaStorage(input, options);
+    }
+    throw new UseOgvPreviewError(
+      `This OGV is ${(input.size / (1024 * 1024)).toFixed(0)} MB — using the local OGV player for editing.`
+    );
   }
 
   try {
@@ -373,18 +445,12 @@ async function transcodeViaServer(
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
     if (
-      serverStorageConvert &&
-      serverLocalDirectLarge &&
+      (serverBlobConvert || serverStorageConvert) &&
       /use storage|413|too large|over \d+ MB|Entity Too Large|Payload/i.test(
         message
       )
     ) {
       return transcodeViaStorage(input, options);
-    }
-    if (/use storage|413|too large|over \d+ MB|Entity Too Large|Payload/i.test(message)) {
-      throw new UseOgvPreviewError(
-        "File is too large for a fast MP4 preview here — using the local OGV player for editing."
-      );
     }
     throw err;
   }

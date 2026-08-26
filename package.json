@@ -18,13 +18,15 @@
     "@ffmpeg/util": "^0.12.2",
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.112.4",
+    "@vercel/blob": "^2.8.0",
     "ffmpeg-static": "^5.3.0",
     "jszip": "^3.10.1",
     "next": "16.3.1",
     "ogv": "^1.9.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "replicate": "^1.4.0"
+    "replicate": "^1.4.0",
+    "tus-js-client": "^4.3.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -32,6 +34,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/tus-js-client": "^1.8.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "playwright": "^1.62.1",

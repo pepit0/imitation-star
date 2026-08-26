@@ -555,19 +555,25 @@ export default function UploadPack({
       const ac = new AbortController();
       transcodeAbortRef.current = ac;
 
-      setVideoFrameReady(false);
-      setUseOgvVideo(false);
+      // Show local OGV immediately so editing isn't blocked while preview converts.
+      useLocalOgvPreview(
+        ogvFile,
+        "Editing locally — building a faster MP4 preview in the background…"
+      );
       setTranscodeProgress(0);
-      setTranscodeLabel("Checking for cached preview…");
-      setImportStatus("Preparing fast MP4 preview…");
+      setTranscodeLabel("Preparing MP4 preview…");
 
       try {
         const cacheKey = ogvProxyCacheKey(ogvFile, ogvFile.name);
         const cached = await loadCachedOgvProxy(cacheKey);
-        if (cached && !ac.signal.aborted) {
-          await applyMp4Preview(cached, ogvFile.name, true);
-          setImportStatus("Loading cached MP4 preview…");
-          return;
+        if (cached && cached.size > 1000 && !ac.signal.aborted) {
+          const head = new Uint8Array(await cached.slice(4, 8).arrayBuffer());
+          const tag = String.fromCharCode(...head);
+          if (tag === "ftyp") {
+            await applyMp4Preview(cached, ogvFile.name, true);
+            setImportStatus("Loading cached MP4 preview…");
+            return;
+          }
         }
 
         const mp4Blob = await transcodeOgvToMp4(ogvFile, ogvFile.name, {
@@ -582,23 +588,27 @@ export default function UploadPack({
         if (ac.signal.aborted) return;
 
         await applyMp4Preview(mp4Blob, ogvFile.name, false);
-        setImportStatus("MP4 preview ready — editing stays on this device until you publish.");
+        setImportStatus(
+          "MP4 preview ready — editing stays on this device until you publish."
+        );
       } catch (e) {
         if (ac.signal.aborted) return;
+        // Keep the local OGV player — convert is best-effort for production large files.
+        setTranscodeProgress(-1);
+        setTranscodeLabel(null);
         if (e instanceof UseOgvPreviewError || (e instanceof Error && e.name === "UseOgvPreviewError")) {
-          useLocalOgvPreview(
-            ogvFile,
+          setOgvWarning(false);
+          setImportStatus(
             "Editing locally with the OGV player — nothing uploads until you publish."
           );
           return;
         }
         const detail =
           e instanceof Error ? e.message : "Unknown conversion error";
-        useLocalOgvPreview(
-          ogvFile,
-          `Could not build MP4 preview (${detail}). Showing OGV player — replace with MP4 if playback stays blank.`
-        );
         setOgvWarning(true);
+        setImportStatus(
+          `MP4 preview unavailable (${detail}). Continuing with the OGV player.`
+        );
       }
     },
     [applyMp4Preview, useLocalOgvPreview]
