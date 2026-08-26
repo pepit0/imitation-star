@@ -3720,13 +3720,16 @@ html[data-native-app="1"] .cv-main-menu--native {
 
 .confirm-dialog__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 1rem;
 }
 
 .confirm-dialog__cancel,
-.confirm-dialog__confirm {
-  flex: 1;
+.confirm-dialog__confirm,
+.confirm-dialog__secondary {
+  flex: 1 1 auto;
+  min-width: 5.5rem;
   justify-content: center;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -3741,6 +3744,15 @@ html[data-native-app="1"] .cv-main-menu--native {
 .confirm-dialog__cancel:hover:not(:disabled) {
   background: #ebe4d4;
   color: #111;
+}
+
+.confirm-dialog__secondary {
+  background: var(--es-pollen);
+  color: #111;
+}
+
+.confirm-dialog__secondary:hover:not(:disabled) {
+  filter: brightness(0.97);
 }
 
 .confirm-dialog__confirm--green {

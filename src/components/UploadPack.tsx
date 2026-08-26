@@ -27,6 +27,7 @@ import {
   type CvImportResult,
 } from "@/lib/packImport";
 import { useAuth } from "@/components/auth/AuthProvider";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import PackMakerVideo, {
   type PackMakerVideoHandle,
 } from "@/components/PackMakerVideo";
@@ -121,6 +122,8 @@ export default function UploadPack({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaveBusy, setLeaveBusy] = useState(false);
   const [separating, setSeparating] = useState(false);
   const [jobStatus, setJobStatus] = useState<string | null>(null);
   const [jobsConfigured, setJobsConfigured] = useState<boolean | null>(null);
@@ -490,7 +493,8 @@ export default function UploadPack({
   const useLocalOgvVideo = useCallback((ogvFile: File) => {
     setUseOgvVideo(true);
     setOgvWarning(true);
-    setVideoFrameReady(false);
+    // Show OGV immediately — do not wait on metadata (pending opacity hid the player).
+    setVideoFrameReady(true);
     setObjectUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return URL.createObjectURL(ogvFile);
@@ -1441,30 +1445,69 @@ export default function UploadPack({
   );
 
   const handleExportZip = useCallback(async () => {
-    if (!file) {
+    if (!file && packKind === "dub") {
       setError("Choose a video first.");
-      return;
+      return false;
     }
-    if (clips.length === 0) {
-      setError("Add at least one clip before exporting.");
-      return;
+    if (clips.length === 0 && !file) {
+      setError("Nothing to export yet — add a video or clips first.");
+      return false;
     }
     setExporting(true);
     setError(null);
     try {
-      const thumbBlob =
+      let thumbBlob =
         reviewThumb ?? (await mediaRef.current?.captureFrame()) ?? null;
-      if (!thumbBlob) {
-        setError("Could not capture a thumbnail — go back and try again.");
-        return;
+      if (!thumbBlob && posterUrl) {
+        try {
+          const res = await fetch(posterUrl);
+          thumbBlob = await res.blob();
+        } catch {
+          /* ignore */
+        }
       }
-      const sorted = [...clips].sort((a, b) => a.startMs - b.startMs);
+      if (!thumbBlob) {
+        // Solid placeholder so drafts can still export.
+        const canvas = document.createElement("canvas");
+        canvas.width = 640;
+        canvas.height = 360;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.fillStyle = "#111";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        thumbBlob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85)
+        );
+      }
+      if (!thumbBlob) {
+        setError("Could not create a thumbnail for export.");
+        return false;
+      }
+
+      const exportChars =
+        characters.length > 0
+          ? characters
+          : [{ id: "char-1", name: "SPEAKER", color: "#375F57" }];
+      const sorted =
+        clips.length > 0
+          ? [...clips].sort((a, b) => a.startMs - b.startMs)
+          : [
+              {
+                id: "clip-draft",
+                characterId: exportChars[0]!.id,
+                text: "(continue editing)",
+                startMs: 0,
+                endMs: Math.max(1000, durationMs || 1000),
+              },
+            ];
+
       const zipBlob = await buildPackZip({
-        title: title.trim() || "MyPack",
+        title: title.trim() || "MyPack-draft",
         creator: creator.trim() || "You",
-        characters,
+        characters: exportChars,
         lines: sorted.map((c) => {
-          const ch = characters.find((x) => x.id === c.characterId);
+          const ch = exportChars.find((x) => x.id === c.characterId);
           return {
             id: c.id,
             characterId: c.characterId,
@@ -1474,19 +1517,27 @@ export default function UploadPack({
             endMs: c.endMs,
           };
         }),
-        videoBlob: file,
+        videoBlob: file ?? (await import("@/lib/packImport").then((m) =>
+          m.createPlaceholderVideoBlob()
+        )),
         thumbBlob,
         backingBlob: backingFile,
         vocalsBlob: vocalsFile,
       });
-      downloadBlob(zipBlob, `${(title.trim() || "MyPack").replace(/\s+/g, "_")}.zip`);
+      downloadBlob(
+        zipBlob,
+        `${(title.trim() || "MyPack-draft").replace(/\s+/g, "_")}.zip`
+      );
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "ZIP export failed.");
+      return false;
     } finally {
       setExporting(false);
     }
   }, [
     file,
+    packKind,
     clips,
     title,
     creator,
@@ -1494,7 +1545,37 @@ export default function UploadPack({
     backingFile,
     vocalsFile,
     reviewThumb,
+    posterUrl,
+    durationMs,
   ]);
+
+  const hasUnsavedWork = Boolean(
+    editorReady && (file || clips.length > 0 || past.length > 0)
+  );
+
+  const requestLeave = useCallback(() => {
+    if (makerStep === "review") {
+      setMakerStep("edit");
+      setPickingFrame(false);
+      setError(null);
+      return;
+    }
+    if (hasUnsavedWork) {
+      setLeaveOpen(true);
+      return;
+    }
+    onBack();
+  }, [makerStep, hasUnsavedWork, onBack]);
+
+  useEffect(() => {
+    if (!hasUnsavedWork) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [hasUnsavedWork]);
 
   const handleSave = useCallback(async () => {
     setError(null);
@@ -1749,15 +1830,7 @@ export default function UploadPack({
         <button
           type="button"
           className="pm-btn pm-btn-ghost"
-          onClick={() => {
-            if (makerStep === "review") {
-              setMakerStep("edit");
-              setPickingFrame(false);
-              setError(null);
-              return;
-            }
-            onBack();
-          }}
+          onClick={requestLeave}
         >
           {makerStep === "review" ? "← Edit clips" : "← Back"}
         </button>
@@ -1806,6 +1879,15 @@ export default function UploadPack({
                 disabled={importing}
               >
                 {importing ? "Importing…" : "Import ZIP"}
+              </button>
+              <button
+                type="button"
+                className="pm-btn pm-btn-ghost"
+                disabled={exporting || (!file && clips.length === 0)}
+                onClick={() => void handleExportZip()}
+                title="Save a draft ZIP you can re-import later"
+              >
+                {exporting ? "Exporting…" : "Export ZIP"}
               </button>
               {packKind === "dub" ? (
                 <button
@@ -2191,7 +2273,9 @@ export default function UploadPack({
           ) : (
             <>
           {(() => {
-            const showPlaceholder = !videoFrameReady && Boolean(posterUrl);
+            // OGV must never use the pending poster overlay (opacity:0 hid the player).
+            const showPlaceholder =
+              !useOgvVideo && !videoFrameReady && Boolean(posterUrl);
             return (
               <div
                 className={`pm-video-wrap${
@@ -2612,6 +2696,35 @@ export default function UploadPack({
         </aside>
       </div>
       )}
+
+      {leaveOpen ? (
+        <ConfirmDialog
+          title="Leave pack editor?"
+          message="Leaving will discard unsaved editing progress on this device. Export a ZIP first if you want to re-import and continue later."
+          cancelLabel="Stay"
+          secondaryLabel={leaveBusy ? "Exporting…" : "Export ZIP"}
+          confirmLabel="Leave anyway"
+          tone="red"
+          busy={leaveBusy || exporting}
+          fixed
+          onCancel={() => {
+            if (!leaveBusy) setLeaveOpen(false);
+          }}
+          onSecondary={async () => {
+            setLeaveBusy(true);
+            const ok = await handleExportZip();
+            setLeaveBusy(false);
+            if (ok) {
+              setLeaveOpen(false);
+              onBack();
+            }
+          }}
+          onConfirm={() => {
+            setLeaveOpen(false);
+            onBack();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

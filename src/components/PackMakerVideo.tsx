@@ -207,6 +207,7 @@ const PackMakerVideo = forwardRef<PackMakerVideoHandle, PackMakerVideoProps>(
 
       let cancelled = false;
       let player: OgvPlayer | null = null;
+      let pollId = 0;
 
       const onMeta = () => {
         if (!player || cancelled) return;
@@ -252,6 +253,23 @@ const PackMakerVideo = forwardRef<PackMakerVideoHandle, PackMakerVideoProps>(
           setOgvReady(true);
           setOgvFailed(false);
           onMeta();
+
+          // OGV often reports duration late — keep polling briefly.
+          let tries = 0;
+          pollId = window.setInterval(() => {
+            if (cancelled || !player) {
+              window.clearInterval(pollId);
+              return;
+            }
+            onMeta();
+            tries += 1;
+            if (
+              tries >= 40 ||
+              (Number.isFinite(player.duration) && player.duration > 0)
+            ) {
+              window.clearInterval(pollId);
+            }
+          }, 250);
         } catch {
           if (!cancelled) {
             setOgvFailed(true);
@@ -262,6 +280,7 @@ const PackMakerVideo = forwardRef<PackMakerVideoHandle, PackMakerVideoProps>(
 
       return () => {
         cancelled = true;
+        if (pollId) window.clearInterval(pollId);
         if (player) {
           player.pause();
           player.removeEventListener("loadedmetadata", onMeta);
@@ -287,11 +306,12 @@ const PackMakerVideo = forwardRef<PackMakerVideoHandle, PackMakerVideoProps>(
     if (!src) return null;
 
     if (ogv) {
+      // Never put pm-video--pending on the OGV host — that hides the canvas at opacity 0.
       return (
         <div
           className={
             bare
-              ? `pm-video-host${className ? ` ${className}` : ""}`
+              ? "pm-video-host"
               : `pm-video-wrap${posterUrl && !ogvReady ? " pm-video-wrap--converting" : ""}`
           }
           onClick={onClick}

@@ -7,11 +7,14 @@ type ConfirmDialogProps = {
   message: string;
   confirmLabel: string;
   cancelLabel?: string;
+  /** Optional middle action (e.g. Export ZIP). */
+  secondaryLabel?: string;
   tone?: "green" | "red" | "neutral";
   busy?: boolean;
   fixed?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  onSecondary?: () => void;
 };
 
 export default function ConfirmDialog({
@@ -19,11 +22,13 @@ export default function ConfirmDialog({
   message,
   confirmLabel,
   cancelLabel = "Cancel",
+  secondaryLabel,
   tone = "neutral",
   busy = false,
   fixed = false,
   onConfirm,
   onCancel,
+  onSecondary,
 }: ConfirmDialogProps) {
   const titleId = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -66,6 +71,16 @@ export default function ConfirmDialog({
           >
             {cancelLabel}
           </button>
+          {secondaryLabel && onSecondary ? (
+            <button
+              type="button"
+              className="brutal-btn brutal-btn-sm confirm-dialog__secondary"
+              disabled={busy}
+              onClick={onSecondary}
+            >
+              {busy ? "Working…" : secondaryLabel}
+            </button>
+          ) : null}
           <button
             type="button"
             className={`brutal-btn brutal-btn-sm confirm-dialog__confirm confirm-dialog__confirm--${tone}`}
