@@ -6,7 +6,18 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "plugins": ["./plugins/withPushEntitlementsDeferred.js"],
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#FF595E",
+          "sounds": [],
+          "mode": "production",
+          "enableBackgroundRemoteNotifications": true
+        }
+      ]
+    ],
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -15,11 +26,15 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.imitationstar.app",
+      "entitlements": {
+        "aps-environment": "production"
+      },
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Imitation Star needs the microphone to record your dubs.",
         "NSCameraUsageDescription": "Imitation Star may use the camera for profile photos.",
         "NSPhotoLibraryUsageDescription": "Imitation Star may access photos for pack thumbnails.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["remote-notification"]
       }
     },
     "android": {
