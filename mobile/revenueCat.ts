@@ -1,4 +1,4 @@
-import { Platform } from "react-native";
+import { Alert, Platform } from "react-native";
 import Purchases, {
   LOG_LEVEL,
   type CustomerInfo,
@@ -12,40 +12,71 @@ import {
 } from "./subscriptionConstants";
 
 let configured = false;
+let configureAttempted = false;
 
 function resolveApiKey(): string | null {
+  const ios = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY?.trim();
+  const android = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY?.trim();
   const shared = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY?.trim();
-  if (shared) return shared;
 
-  if (Platform.OS === "ios") {
-    return process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY?.trim() ?? null;
-  }
-  if (Platform.OS === "android") {
-    return process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY?.trim() ?? null;
-  }
+  if (Platform.OS === "ios" && ios) return ios;
+  if (Platform.OS === "android" && android) return android;
+  if (shared) return shared;
   return null;
 }
 
-export function isRevenueCatConfigured(): boolean {
-  return Boolean(resolveApiKey());
+/** Test Store keys (`test_…`) crash release / TestFlight builds by design in RevenueCat. */
+function isTestStoreKey(apiKey: string): boolean {
+  return apiKey.startsWith("test_");
 }
 
-export function configureRevenueCat(): void {
-  if (configured) return;
+function canUseApiKeyInThisBuild(apiKey: string): boolean {
+  if (isTestStoreKey(apiKey) && !__DEV__) {
+    console.warn(
+      "[RevenueCat] Refusing Test Store API key in a release build (would crash). Use an appl_/goog_ key for TestFlight."
+    );
+    return false;
+  }
+  return true;
+}
+
+export function isRevenueCatConfigured(): boolean {
+  return configured;
+}
+
+export function isRevenueCatAvailable(): boolean {
+  const apiKey = resolveApiKey();
+  return Boolean(apiKey && canUseApiKeyInThisBuild(apiKey));
+}
+
+export function configureRevenueCat(): boolean {
+  if (configured) return true;
+  if (configureAttempted) return false;
+  configureAttempted = true;
+
   const apiKey = resolveApiKey();
   if (!apiKey) {
     console.warn(
-      "[RevenueCat] Missing EXPO_PUBLIC_REVENUECAT_API_KEY (or platform-specific keys)."
+      "[RevenueCat] Missing EXPO_PUBLIC_REVENUECAT_IOS_API_KEY / ANDROID / shared API key."
     );
-    return;
+    return false;
+  }
+  if (!canUseApiKeyInThisBuild(apiKey)) {
+    return false;
   }
 
-  if (__DEV__) {
-    Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+  try {
+    if (__DEV__) {
+      Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+    }
+    Purchases.configure({ apiKey });
+    configured = true;
+    return true;
+  } catch (e) {
+    console.warn("[RevenueCat] configure failed", e);
+    configured = false;
+    return false;
   }
-
-  Purchases.configure({ apiKey });
-  configured = true;
 }
 
 export function customerInfoToStatus(
@@ -61,53 +92,76 @@ export function customerInfoToStatus(
   };
 }
 
+const emptyStatus = (): NativeSubscriptionStatus => ({
+  isPro: false,
+  entitlementId: REVENUECAT_ENTITLEMENT_ID,
+  expirationDate: null,
+  managementUrl: null,
+});
+
 export async function fetchSubscriptionStatus(): Promise<NativeSubscriptionStatus> {
-  if (!configured) {
-    return {
-      isPro: false,
-      entitlementId: REVENUECAT_ENTITLEMENT_ID,
-      expirationDate: null,
-      managementUrl: null,
-    };
-  }
+  if (!configured) return emptyStatus();
   try {
     const info = await Purchases.getCustomerInfo();
     return customerInfoToStatus(info);
   } catch (e) {
     console.warn("[RevenueCat] getCustomerInfo failed", e);
-    return customerInfoToStatus(null);
+    return emptyStatus();
   }
 }
 
 async function resolvePaywallOffering() {
   const offerings = await Purchases.getOfferings();
   return (
-    offerings.all[REVENUECAT_OFFERING_ID] ??
-    offerings.current ??
-    null
+    offerings.all[REVENUECAT_OFFERING_ID] ?? offerings.current ?? null
+  );
+}
+
+function alertBillingUnavailable(detail?: string): void {
+  Alert.alert(
+    "Star Club unavailable",
+    detail ??
+      "Subscriptions aren’t ready on this build yet. Please try again after the next update."
   );
 }
 
 export async function presentSubscriptionPaywall(): Promise<PAYWALL_RESULT> {
-  if (!configured) return PAYWALL_RESULT.NOT_PRESENTED;
+  if (!configureRevenueCat()) {
+    alertBillingUnavailable(
+      "Billing isn’t configured for this build. A TestFlight update with the App Store RevenueCat key is required."
+    );
+    return PAYWALL_RESULT.NOT_PRESENTED;
+  }
   try {
     const offering = await resolvePaywallOffering();
+    if (!offering) {
+      alertBillingUnavailable(
+        "No subscription packages are available yet. Check the RevenueCat offering and App Store products."
+      );
+      return PAYWALL_RESULT.NOT_PRESENTED;
+    }
     return await RevenueCatUI.presentPaywall({
-      offering: offering ?? undefined,
+      offering,
       displayCloseButton: true,
     });
   } catch (e) {
     console.warn("[RevenueCat] presentPaywall failed", e);
+    alertBillingUnavailable(
+      e instanceof Error ? e.message : "Could not open the paywall."
+    );
     return PAYWALL_RESULT.ERROR;
   }
 }
 
 export async function presentPaywallIfNeeded(): Promise<PAYWALL_RESULT> {
-  if (!configured) return PAYWALL_RESULT.NOT_PRESENTED;
+  if (!configureRevenueCat()) {
+    return PAYWALL_RESULT.NOT_PRESENTED;
+  }
   try {
     const offering = await resolvePaywallOffering();
+    if (!offering) return PAYWALL_RESULT.NOT_PRESENTED;
     return await RevenueCatUI.presentPaywallIfNeeded({
-      offering: offering ?? undefined,
+      offering,
       requiredEntitlementIdentifier: REVENUECAT_ENTITLEMENT_ID,
       displayCloseButton: true,
     });
@@ -118,7 +172,7 @@ export async function presentPaywallIfNeeded(): Promise<PAYWALL_RESULT> {
 }
 
 export async function restorePurchases(): Promise<NativeSubscriptionStatus> {
-  if (!configured) return customerInfoToStatus(null);
+  if (!configureRevenueCat()) return emptyStatus();
   try {
     const info = await Purchases.restorePurchases();
     return customerInfoToStatus(info);
@@ -129,7 +183,7 @@ export async function restorePurchases(): Promise<NativeSubscriptionStatus> {
 }
 
 export async function logInRevenueCat(userId: string): Promise<void> {
-  if (!configured || !userId.trim()) return;
+  if (!configureRevenueCat() || !userId.trim()) return;
   try {
     await Purchases.logIn(userId.trim());
   } catch (e) {
@@ -155,10 +209,19 @@ export function addCustomerInfoListener(
   const wrapped = (info: CustomerInfo) => {
     listener(customerInfoToStatus(info));
   };
-  Purchases.addCustomerInfoUpdateListener(wrapped);
-  return () => {
-    Purchases.removeCustomerInfoUpdateListener(wrapped);
-  };
+  try {
+    Purchases.addCustomerInfoUpdateListener(wrapped);
+    return () => {
+      try {
+        Purchases.removeCustomerInfoUpdateListener(wrapped);
+      } catch {
+        /* ignore */
+      }
+    };
+  } catch (e) {
+    console.warn("[RevenueCat] addCustomerInfoUpdateListener failed", e);
+    return () => undefined;
+  }
 }
 
 export async function handleWebSubscriptionMessage(
@@ -171,31 +234,36 @@ export async function handleWebSubscriptionMessage(
     return {};
   }
 
-  switch (message.type) {
-    case "subscription:present-paywall": {
-      const paywallResult = await presentSubscriptionPaywall();
-      const status = await fetchSubscriptionStatus();
-      return { status, paywallResult };
+  try {
+    switch (message.type) {
+      case "subscription:present-paywall": {
+        const paywallResult = await presentSubscriptionPaywall();
+        const status = await fetchSubscriptionStatus();
+        return { status, paywallResult };
+      }
+      case "subscription:present-paywall-if-needed": {
+        const paywallResult = await presentPaywallIfNeeded();
+        const status = await fetchSubscriptionStatus();
+        return { status, paywallResult };
+      }
+      case "subscription:restore": {
+        const status = await restorePurchases();
+        return { status };
+      }
+      case "subscription:login":
+        await logInRevenueCat(message.userId);
+        return { status: await fetchSubscriptionStatus() };
+      case "subscription:logout":
+        await logOutRevenueCat();
+        return { status: await fetchSubscriptionStatus() };
+      case "subscription:refresh":
+        return { status: await fetchSubscriptionStatus() };
+      default:
+        return {};
     }
-    case "subscription:present-paywall-if-needed": {
-      const paywallResult = await presentPaywallIfNeeded();
-      const status = await fetchSubscriptionStatus();
-      return { status, paywallResult };
-    }
-    case "subscription:restore": {
-      const status = await restorePurchases();
-      return { status };
-    }
-    case "subscription:login":
-      await logInRevenueCat(message.userId);
-      return { status: await fetchSubscriptionStatus() };
-    case "subscription:logout":
-      await logOutRevenueCat();
-      return { status: await fetchSubscriptionStatus() };
-    case "subscription:refresh":
-      return { status: await fetchSubscriptionStatus() };
-    default:
-      return {};
+  } catch (e) {
+    console.warn("[RevenueCat] handleWebSubscriptionMessage failed", e);
+    return { status: emptyStatus() };
   }
 }
 

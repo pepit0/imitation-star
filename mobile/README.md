@@ -88,27 +88,32 @@ Supabase Storage signed upload — Vercel cannot accept those files in the reque
 
 ## RevenueCat (Star Club subscriptions)
 
-The native shell integrates **RevenueCat** + **RevenueCatUI** for your dashboard paywall
-(`star-subscriptions` offering → **Imitation Star Pro** entitlement).
+The native shell integrates **RevenueCat** + **RevenueCatUI** for offering
+`star-subscriptions` → entitlement **Imitation Star Pro**.
 
-Add to `mobile/.env`:
+### Critical: do not use Test Store keys on TestFlight
+
+RevenueCat **intentionally crashes** release / TestFlight builds if you call
+`Purchases.configure` with a `test_…` API key. Use:
+
+| Build | Key |
+| --- | --- |
+| Development client (`__DEV__`) | `test_…` OK |
+| Production / TestFlight | `appl_…` (iOS) / `goog_…` (Android) only |
+
+EAS production should have `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY=appl_…`.
+Development may use `EXPO_PUBLIC_REVENUECAT_API_KEY=test_…`.
+
+Before shipping:
 
 ```bash
-# Test Store while App Store / Play apps are being set up
-EXPO_PUBLIC_REVENUECAT_API_KEY=test_xxxxxxxx
-
-# Production (once store apps exist in RevenueCat):
-# EXPO_PUBLIC_REVENUECAT_IOS_API_KEY=appl_xxxxxxxx
-# EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY=goog_xxxxxxxx
+node scripts/verify-revenuecat-keys.cjs
 ```
+
+Also create matching subscription product IDs in **App Store Connect**, and connect
+ASC credentials under RevenueCat → Apps → Imitation Star iOS.
 
 **Requires a development or store build** — RevenueCat does not run in Expo Go.
-After changing native deps:
-
-```bash
-eas build --profile development --platform ios
-# or android
-```
 
 The web layer shows **Join Star Club** on the native main menu; purchases run in the
 native paywall. Supabase user id is synced via `Purchases.logIn` on sign-in.
