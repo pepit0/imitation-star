@@ -83,6 +83,7 @@ export default function DubPostPlayer({
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [manageBusy, setManageBusy] = useState(false);
   const [manageError, setManageError] = useState<string | null>(null);
+  const [volume, setVolume] = useState(1);
 
   const pack = getPackById(post.packId);
   const videoUrl = post.videoUrl ?? pack?.videoUrl;
@@ -163,6 +164,10 @@ export default function DubPostPlayer({
     setCurrentMs(0);
   }, [post.id, hardStop]);
 
+  useEffect(() => {
+    mixerRef.current?.setVolume(volume);
+  }, [volume]);
+
   const loadTakes = useCallback(async (): Promise<RecordedLine[] | null> => {
     if (recordings) return recordings;
     if (userTakes.length === 0) {
@@ -223,9 +228,12 @@ export default function DubPostPlayer({
       });
       mixerRef.current = mixer;
       const dur = await mixer.prepare();
+      mixer.setVolume(volume);
       setDurationMs(dur);
       return mixer;
     },
+    // volume applied after prepare; intentional omit from deps to avoid remaking mixer
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [videoUrl, backingUrl, lines]
   );
 
@@ -282,7 +290,7 @@ export default function DubPostPlayer({
       const rec = byLine.get(line.id);
       if (!rec) continue;
       setCurrentMs(elapsed);
-      await playAudioBlob(rec.blob);
+      await playAudioBlob(rec.blob, { volume });
       elapsed += Math.max(0, line.endMs - line.startMs);
       setCurrentMs(elapsed);
       await new Promise((r) => setTimeout(r, 80));
@@ -296,6 +304,7 @@ export default function DubPostPlayer({
     ensureMixer,
     playing,
     lines,
+    volume,
   ]);
 
   const seekTo = useCallback(
@@ -494,6 +503,30 @@ export default function DubPostPlayer({
           <span className="forum-player__time">
             {formatTimecode(currentMs)} / {formatTimecode(durationMs)}
           </span>
+          <label className="forum-player__volume">
+            <svg
+              className="forum-player__volume-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                fill="currentColor"
+                d="M3 10v4h4l5 4V6L7 10H3zm13.5 2a3.5 3.5 0 0 0-1.8-3.05v6.1A3.5 3.5 0 0 0 16.5 12zM14 4.23v2.06a5.5 5.5 0 0 1 0 11.42v2.06A7.5 7.5 0 0 0 14 4.23z"
+              />
+            </svg>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={Math.round(volume * 100)}
+              onChange={(e) => setVolume(Number(e.target.value) / 100)}
+              aria-label="Volume"
+              className="forum-player__volume-slider"
+            />
+          </label>
         </div>
 
         <div className="forum-player__body">

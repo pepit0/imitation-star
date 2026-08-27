@@ -63,8 +63,13 @@ export default function UserPickerModal({
       onSelect(currentUserProfile);
       return;
     }
+    setError(null);
     const me = await getProfileById(currentUserId);
-    if (me) onSelect(me);
+    if (me) {
+      onSelect(me);
+      return;
+    }
+    setError("Couldn’t load your profile. Try again or pick another player.");
   }
 
   return (

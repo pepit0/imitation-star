@@ -40,6 +40,7 @@ export class DubMixer {
   private recordings: RecordedLine[];
   private backingUrl?: string | null;
   private ready = false;
+  private volume = 1;
 
   constructor(options: DubMixOptions) {
     this.video = options.video;
@@ -72,6 +73,19 @@ export class DubMixer {
     );
   }
 
+  /** 0–1 gain applied to backing track and user takes (video stays muted). */
+  setVolume(volume: number): void {
+    this.volume = Math.max(0, Math.min(1, volume));
+    this.applyVolume();
+  }
+
+  private applyVolume(): void {
+    if (this.backing) this.backing.volume = this.volume;
+    for (const take of this.preparedTakes) {
+      take.audio.volume = this.volume;
+    }
+  }
+
   async prepare(): Promise<number> {
     this.teardownTakes();
     this.video.muted = true;
@@ -98,6 +112,7 @@ export class DubMixer {
       });
     }
 
+    this.applyVolume();
     await this.waitForMedia();
 
     this.durationMs = Math.max(

@@ -271,7 +271,8 @@ export async function loadUserPackMediaForEdit(
 
 /**
  * Local packs + community cloud packs (deduped).
- * Prefer local copy when the same id exists (faster, editable offline).
+ * When online, keep cloud packs in their browse position and only mark
+ * `offlineReady` if a device cache exists — downloading must not reshuffle.
  * When offline, returns only device-stored packs.
  */
 export async function loadBrowsablePacks(): Promise<DubPack[]> {
@@ -288,11 +289,23 @@ export async function loadBrowsablePacks(): Promise<DubPack[]> {
   }
 
   const localIds = new Set(local.map((p) => p.id));
-  const merged = [...local];
+  const owned = local.filter((p) => p.source === "user");
+  const ownedIds = new Set(owned.map((p) => p.id));
+  const cloudIds = new Set(cloud.map((p) => p.id));
+
+  const merged: DubPack[] = [...owned];
   for (const pack of cloud) {
-    if (!localIds.has(pack.id)) {
-      merged.push({ ...pack, offlineReady: false });
-    }
+    if (ownedIds.has(pack.id)) continue;
+    merged.push({
+      ...pack,
+      offlineReady: localIds.has(pack.id),
+    });
+  }
+  // Cached downloads whose cloud row is gone — still playable offline later.
+  for (const pack of local) {
+    if (pack.source !== "cached") continue;
+    if (ownedIds.has(pack.id) || cloudIds.has(pack.id)) continue;
+    merged.push({ ...pack, offlineReady: true });
   }
   return merged;
 }

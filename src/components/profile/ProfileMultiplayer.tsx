@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { CollabDetail } from "@/lib/types/collab";
 import {
   acceptCollabInvite,
+  collabErrorMessage,
   declineCollabInvite,
   getCollabDetail,
   getMyAssignments,
@@ -236,7 +237,7 @@ export default function ProfileMultiplayer({ userId }: ProfileMultiplayerProps) 
       setCreated(createdRows);
       setJoined(joinedRows);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load collabs.");
+      setError(collabErrorMessage(e) || "Could not load collabs.");
     } finally {
       setLoading(false);
     }

@@ -133,10 +133,16 @@ export class AudioRecorder {
   }
 }
 
-export function playAudioBlob(blob: Blob): Promise<void> {
+export function playAudioBlob(
+  blob: Blob,
+  options?: { volume?: number }
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
+    if (typeof options?.volume === "number") {
+      audio.volume = Math.max(0, Math.min(1, options.volume));
+    }
     audio.onended = () => {
       URL.revokeObjectURL(url);
       resolve();

@@ -144,6 +144,7 @@ export default function PackBrowser({
               rankById && isCommunityPack(pack) ? rankById.get(pack.id) : null;
             const downloaded =
               downloadedPackIds?.has(pack.id) ||
+              pack.offlineReady === true ||
               pack.source === "cached" ||
               pack.source === "user";
             const packProgress = progressByPackId?.get(pack.id);

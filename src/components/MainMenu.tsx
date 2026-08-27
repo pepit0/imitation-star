@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useCallback, useRef } from "react";
 import LogoMark from "@/components/LogoMark";
 import MenuModeIcon from "@/components/MenuModeIcon";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -10,6 +11,9 @@ import ProfileAvatar from "@/components/profile/ProfileAvatar";
 import { useIsNativeApp } from "@/hooks/useIsNativeApp";
 import type { PackProgressSummary } from "@/lib/packProgress";
 import type { DubPack, GameMode } from "@/lib/types";
+
+/** Hidden TestFlight entry: long-press logo to open Star Club paywall. */
+const LOGO_PAYWALL_LONG_PRESS_MS = 700;
 
 interface MainMenuProps {
   packCount: number;
@@ -39,8 +43,24 @@ export default function MainMenu({
   const isNativeApp = useIsNativeApp();
   const router = useRouter();
   const { user, profile, loading } = useAuth();
-  const { isPro, nativeBillingAvailable, presentPaywall, loading: subLoading } =
-    useSubscription();
+  const { nativeBillingAvailable, presentPaywall } = useSubscription();
+  const logoPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearLogoPress = useCallback(() => {
+    if (logoPressTimerRef.current) {
+      clearTimeout(logoPressTimerRef.current);
+      logoPressTimerRef.current = null;
+    }
+  }, []);
+
+  const startLogoPress = useCallback(() => {
+    if (!isNativeApp || !nativeBillingAvailable) return;
+    clearLogoPress();
+    logoPressTimerRef.current = setTimeout(() => {
+      logoPressTimerRef.current = null;
+      void presentPaywall();
+    }, LOGO_PAYWALL_LONG_PRESS_MS);
+  }, [clearLogoPress, isNativeApp, nativeBillingAvailable, presentPaywall]);
 
   return (
     <div
@@ -52,14 +72,24 @@ export default function MainMenu({
       <div className="cv-main-menu__brand flex-1 flex flex-col p-4 sm:p-6 min-w-0 min-h-0 border-b-3 sm:border-b-0 sm:border-r-3 border-black">
         <div className="cv-main-menu__hero-lockup flex items-start justify-between gap-3">
           <div className="cv-main-menu__hero-brand flex items-center min-w-0">
-            <LogoMark
-              className={`object-contain shrink-0 ${
-                isNativeApp
-                  ? "w-10 h-10"
-                  : "cv-main-menu__logo"
-              }`}
-              title="Imitation Star"
-            />
+            <button
+              type="button"
+              className="shrink-0 touch-manipulation select-none border-0 bg-transparent p-0"
+              aria-label="Imitation Star"
+              onPointerDown={startLogoPress}
+              onPointerUp={clearLogoPress}
+              onPointerLeave={clearLogoPress}
+              onPointerCancel={clearLogoPress}
+              onContextMenu={(e) => {
+                if (isNativeApp && nativeBillingAvailable) e.preventDefault();
+              }}
+            >
+              <LogoMark
+                className={`object-contain shrink-0 pointer-events-none ${
+                  isNativeApp ? "w-10 h-10" : "cv-main-menu__logo"
+                }`}
+              />
+            </button>
             <div className="min-w-0">
               <p className="cv-main-menu__hero-eyebrow text-[10px] sm:text-xs uppercase tracking-[0.2em] text-es-lilac">
                 The voice dubbing game
@@ -245,29 +275,6 @@ export default function MainMenu({
             Browse all {packCount} Dub Packs
           </span>
         </button>
-
-        {isNativeApp && nativeBillingAvailable ? (
-          <button
-            type="button"
-            onClick={() => void presentPaywall()}
-            disabled={subLoading}
-            className={`cv-menu-btn flex-1 min-h-[5rem] ${
-              isPro ? "cv-menu-btn-outline" : "cv-menu-btn-star-club"
-            }`}
-          >
-            <span className="cv-menu-btn-head">
-              <MenuModeIcon mode="single" />
-              <span className="cv-menu-btn-title">
-                {isPro ? "Star Club Pro" : "Join Star Club"}
-              </span>
-            </span>
-            <span className="cv-menu-btn-sub">
-              {isPro
-                ? "You have Imitation Star Pro — tap to manage"
-                : "Unlock premium features with your dashboard paywall"}
-            </span>
-          </button>
-        ) : null}
 
         {isNativeApp ? (
           <>

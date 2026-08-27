@@ -103,17 +103,17 @@ export default function GameStage({
   );
 
   const allPacks = useMemo(() => {
-    const localIds = new Set(userPacks.map((p) => p.id));
-    const builtins = DUB_PACKS.filter((p) => !localIds.has(p.id)).map((p) => ({
+    const listedIds = new Set(userPacks.map((p) => p.id));
+    const builtins = DUB_PACKS.filter((p) => !listedIds.has(p.id)).map((p) => ({
       ...p,
       source: "builtin" as const,
-      offlineReady: localIds.has(p.id),
+      offlineReady: localPackIds.has(p.id),
     }));
     if (online) {
       return [...userPacks, ...builtins];
     }
     return userPacks;
-  }, [userPacks, online]);
+  }, [userPacks, online, localPackIds]);
 
   const defaultPack = useMemo(() => {
     if (!allPacks.length) return null;
@@ -139,6 +139,7 @@ export default function GameStage({
   const [hideNsfw, setHideNsfw] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [collabPack, setCollabPack] = useState<DubPack | null>(null);
+  const [collabId, setCollabId] = useState<string | null>(null);
   const [skipSavedProgress, setSkipSavedProgress] = useState(false);
   const [resumeProgress, setResumeProgress] = useState<PackProgressSummary | null>(
     null
@@ -339,6 +340,7 @@ export default function GameStage({
       clearPlayQuery();
       setMode(selectedMode);
       setCollabPack(null);
+      setCollabId(null);
       if (selectedMode === "packs" || selectedMode === "multiplayer") {
         setPhase("pack-select");
       } else if (selectedMode === "upload") {
@@ -412,10 +414,12 @@ export default function GameStage({
     setDownloadProgress("Starting…");
     try {
       const cached = await downloadPackForOffline(pack, setDownloadProgress);
-      setUserPacks((prev) => {
-        const without = prev.filter((p) => p.id !== cached.id);
-        return [cached, ...without];
-      });
+      // Keep browse order — only mark offline-ready in place.
+      setUserPacks((prev) =>
+        prev.map((p) =>
+          p.id === cached.id ? { ...p, offlineReady: true } : p
+        )
+      );
       setLocalPackIds((prev) => new Set(prev).add(cached.id));
     } catch (e) {
       setPendingFlushMessage(
@@ -429,18 +433,22 @@ export default function GameStage({
 
   const handleRemoveDownload = useCallback(async (pack: DubPack) => {
     await removeCachedPack(pack.id);
-    setUserPacks((prev) => prev.filter((p) => p.id !== pack.id));
     setLocalPackIds((prev) => {
       const next = new Set(prev);
       next.delete(pack.id);
       return next;
     });
-    if (online) {
-      const packs = await loadBrowsablePacks();
-      setUserPacks(packs);
-    }
+    setUserPacks((prev) => {
+      // Cache-only rows disappear; cloud/builtin stay put without offline flag.
+      if (pack.source === "cached") {
+        return prev.filter((p) => p.id !== pack.id);
+      }
+      return prev.map((p) =>
+        p.id === pack.id ? { ...p, offlineReady: false } : p
+      );
+    });
     setSelectedPack((current) => (current?.id === pack.id ? null : current));
-  }, [online]);
+  }, []);
 
   const handleUploadPending = useCallback(async () => {
     if (!user || !online || uploadingPending) return;
@@ -514,6 +522,7 @@ export default function GameStage({
     setRecordings([]);
     setXpSessionId(null);
     setCollabPack(null);
+    setCollabId(null);
     setMode("single");
   }, [clearPlayQuery]);
 
@@ -685,12 +694,16 @@ export default function GameStage({
               creatorId={user.id}
               creatorProfile={profile}
               onBack={() => setPhase("pack-select")}
-              onCreated={() => setPhase("collab-sent")}
+              onCreated={(id) => {
+                setCollabId(id);
+                setPhase("collab-sent");
+              }}
             />
           ) : null}
           {phase === "collab-sent" && collabPack ? (
             <CollabSent
               packTitle={collabPack.title}
+              collabId={collabId}
               onBackToMenu={handleBackToMenu}
             />
           ) : null}

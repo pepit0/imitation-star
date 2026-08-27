@@ -6,6 +6,7 @@ import AppBackButton from "@/components/AppBackButton";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import LegalLinks from "@/components/LegalLinks";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { useSubscription } from "@/components/subscription/SubscriptionProvider";
 import ProfileAvatar from "@/components/profile/ProfileAvatar";
 import ProfileXpBar from "@/components/profile/ProfileXpBar";
 import { ProfileTabs } from "@/components/profile/ProfileTabs";
@@ -27,7 +28,14 @@ function ProfilePageInner() {
   const searchParams = useSearchParams();
   const isNativeApp = useIsNativeApp();
   const { user, profile, loading, refreshProfile, signOut } = useAuth();
-  const [tab, setTab] = useState<"posts" | "multiplayer">("posts");
+  const {
+    isPro,
+    nativeBillingAvailable,
+    presentPaywall,
+    restorePurchases,
+    loading: subLoading,
+  } = useSubscription();
+  const [tab, setTab] = useState<"posts" | "multiplayer" | "invites">("posts");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
@@ -39,12 +47,14 @@ function ProfilePageInner() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [restoreBusy, setRestoreBusy] = useState(false);
 
   const showDetails = !isNativeApp || detailsOpen;
 
   useEffect(() => {
     const t = searchParams.get("tab");
     if (t === "multiplayer") setTab("multiplayer");
+    if (t === "invites") setTab("invites");
   }, [searchParams]);
 
   useEffect(() => {
@@ -273,6 +283,36 @@ function ProfilePageInner() {
 
           <div className="profile-page__account">
             <p className="profile-page__account-title">Account</p>
+            {isNativeApp && nativeBillingAvailable ? (
+              <div className="profile-page__star-club">
+                <p className="profile-page__star-club-status">
+                  {subLoading
+                    ? "Checking Star Club…"
+                    : isPro
+                      ? "Star Club Pro — active"
+                      : "Star Club — not subscribed"}
+                </p>
+                <button
+                  type="button"
+                  className="brutal-btn brutal-btn-sm bg-es-brand text-white w-full"
+                  disabled={subLoading}
+                  onClick={() => void presentPaywall()}
+                >
+                  {isPro ? "Manage subscription" : "Join Star Club"}
+                </button>
+                <button
+                  type="button"
+                  className="brutal-btn brutal-btn-sm bg-white text-black w-full"
+                  disabled={subLoading || restoreBusy}
+                  onClick={() => {
+                    setRestoreBusy(true);
+                    void restorePurchases().finally(() => setRestoreBusy(false));
+                  }}
+                >
+                  {restoreBusy ? "Restoring…" : "Restore purchases"}
+                </button>
+              </div>
+            ) : null}
             {deleteError ? (
               <p className="auth-card__error" role="alert">
                 {deleteError}

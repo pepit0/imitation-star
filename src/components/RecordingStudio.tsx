@@ -891,50 +891,54 @@ export default function RecordingStudio({
       </div>
 
       <div className="cv-recording__body flex flex-col lg:flex-row flex-1 min-h-0">
-        <div className="cv-recording__stage relative w-full lg:min-w-0 lg:flex-1 bg-black border-b-3 lg:border-b-0 lg:border-r-3 border-black min-h-0 overflow-hidden flex items-center justify-center">
-          {hasVideo ? (
-            <video
-              ref={videoRef}
-              src={pack.videoUrl}
-              className="cv-recording__video w-full h-full max-h-full block bg-black"
-              playsInline
-              preload="auto"
-              muted={hasBacking}
-            />
-          ) : pack.thumbnailUrl.startsWith("blob:") ||
-            pack.thumbnailUrl.startsWith("data:") ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={pack.thumbnailUrl}
-              alt=""
-              className="cv-recording__fallback w-full h-full max-h-full block opacity-70 object-contain"
-            />
-          ) : (
-            <Image
-              src={pack.thumbnailUrl}
-              alt=""
-              width={1280}
-              height={720}
-              className="cv-recording__fallback w-full h-full max-h-full block opacity-70 object-contain"
-              sizes="(max-width: 640px) 100vw, 60vw"
-              priority
-            />
-          )}
-          {!hasVideo ? (
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-black/10" />
-          ) : null}
-          <div className="cv-recording__stage-overlay pointer-events-none absolute inset-x-0 bottom-0 p-3 sm:p-4 bg-gradient-to-t from-black/80 to-transparent">
-            <p className="text-[10px] text-es-phosphor uppercase tracking-widest mb-0.5">
-              {hasVideo ? "Video line" : "Scene Preview"}
-            </p>
-            <p className="font-title text-sm text-white truncate">{pack.title}</p>
+        <div className="cv-recording__stage relative w-full lg:min-w-0 lg:flex-1 border-b-3 lg:border-b-0 lg:border-r-3 border-black min-h-0">
+          <div className="cv-recording__frame">
+            {hasVideo ? (
+              <video
+                ref={videoRef}
+                src={pack.videoUrl}
+                className="cv-recording__video"
+                playsInline
+                preload="auto"
+                muted={hasBacking}
+              />
+            ) : pack.thumbnailUrl.startsWith("blob:") ||
+              pack.thumbnailUrl.startsWith("data:") ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={pack.thumbnailUrl}
+                alt=""
+                className="cv-recording__fallback"
+              />
+            ) : (
+              <Image
+                src={pack.thumbnailUrl}
+                alt=""
+                width={1280}
+                height={720}
+                className="cv-recording__fallback"
+                sizes="(max-width: 640px) 100vw, 60vw"
+                priority
+              />
+            )}
+            {!hasVideo ? (
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-black/10" />
+            ) : null}
+            <div className="cv-recording__stage-overlay pointer-events-none absolute inset-x-0 bottom-0 p-3 sm:p-4 bg-gradient-to-t from-black/80 to-transparent">
+              <p className="text-[10px] text-es-phosphor uppercase tracking-widest mb-0.5">
+                {hasVideo ? "Video line" : "Scene Preview"}
+              </p>
+              <p className="font-title text-sm text-white truncate">
+                {pack.title}
+              </p>
+            </div>
+            <span className="absolute top-2 left-2 brutal-border bg-es-error text-white text-[10px] px-2 py-0.5 uppercase">
+              {line.speaker}
+            </span>
+            <span className="absolute top-2 right-2 text-[9px] text-white/60 uppercase tracking-wider">
+              IMITATION.STAR
+            </span>
           </div>
-          <span className="absolute top-2 left-2 brutal-border bg-es-error text-white text-[10px] px-2 py-0.5 uppercase">
-            {line.speaker}
-          </span>
-          <span className="absolute top-2 right-2 text-[9px] text-white/60 uppercase tracking-wider">
-            IMITATION.STAR
-          </span>
         </div>
 
         <div className="w-full lg:w-[min(44%,360px)] flex-1 lg:flex-none lg:shrink-0 flex flex-col min-h-0 bg-es-bg-secondary border-l-0 lg:border-l-4 border-es-yellow">

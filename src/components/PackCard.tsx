@@ -95,33 +95,6 @@ function PackCover({
           sizes={compact ? "280px" : "(max-width: 640px) 100vw, 50vw"}
         />
       )}
-      {pack.source === "user" ? (
-        <span
-          className="pack-card__badge pack-card__badge--community"
-          style={{ background: "var(--es-blue)" }}
-        >
-          Yours
-        </span>
-      ) : null}
-      {pack.source === "cloud" ? (
-        <span
-          className="pack-card__badge pack-card__badge--community"
-          style={{ background: "var(--es-green)" }}
-        >
-          Community
-        </span>
-      ) : null}
-      {downloaded || pack.source === "cached" ? (
-        <span className="pack-card__badge pack-card__badge--offline">
-          On device
-        </span>
-      ) : null}
-      {pack.popular ? (
-        <span className="pack-card__badge">Popular</span>
-      ) : null}
-      {pack.nsfw ? (
-        <span className="pack-card__badge pack-card__badge-nsfw">NSFW</span>
-      ) : null}
       {aggregateStarCount != null ? (
         <span
           className="pack-card__cover-stars"
@@ -145,6 +118,29 @@ function PackCover({
           </svg>
         </span>
       ) : null}
+      <div className="pack-card__badges">
+        {pack.source === "user" ? (
+          <span className="pack-card__badge pack-card__badge--yours">Yours</span>
+        ) : null}
+        {pack.source === "cloud" ? (
+          <span className="pack-card__badge pack-card__badge--community">
+            Community
+          </span>
+        ) : null}
+        {downloaded || pack.source === "cached" ? (
+          <span className="pack-card__badge pack-card__badge--offline">
+            On device
+          </span>
+        ) : null}
+        {pack.popular ? (
+          <span className="pack-card__badge pack-card__badge--popular">
+            Popular
+          </span>
+        ) : null}
+        {pack.nsfw ? (
+          <span className="pack-card__badge pack-card__badge-nsfw">NSFW</span>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -173,9 +169,19 @@ export default function PackCard({
   const [removing, setRemoving] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const showDelete = deletable && Boolean(onDelete);
-  const showDownload = downloadable && Boolean(onDownload) && !downloaded;
+  const showDownload =
+    Boolean(onDownload) &&
+    (downloadable || downloading) &&
+    !downloaded;
+  const showDownloadedLabel = downloaded && pack.source !== "user";
   const showRemoveDownload =
-    downloaded && pack.source === "cached" && Boolean(onRemoveDownload);
+    downloaded &&
+    pack.source !== "user" &&
+    Boolean(onRemoveDownload) &&
+    (pack.source === "cached" ||
+      pack.source === "cloud" ||
+      pack.source === "builtin" ||
+      pack.offlineReady === true);
   const className = `pack-card ${compact ? "pack-card--compact" : ""}`;
 
   const handleDeleteConfirm = async () => {
@@ -265,28 +271,69 @@ export default function PackCard({
               Play now
             </button>
           )}
-          {showDownload ? (
-            <button
-              type="button"
-              className="pack-card__download"
-              disabled={downloading}
-              onClick={() => void onDownload?.(pack)}
-            >
-              {downloading ? downloadProgress ?? "Downloading…" : "Download"}
-            </button>
-          ) : null}
-          {showRemoveDownload ? (
-            <button
-              type="button"
-              className="pack-card__remove-download"
-              disabled={removing}
-              onClick={() => {
-                setDeleteError(null);
-                setConfirmRemove(true);
-              }}
-            >
-              Remove
-            </button>
+          {showDownload || showDownloadedLabel || showRemoveDownload ? (
+            <div className="pack-card__download-wrap">
+              {showDownloadedLabel ? (
+                <span className="pack-card__downloaded-label">Downloaded</span>
+              ) : null}
+              {showDownload ? (
+                <button
+                  type="button"
+                  className="pack-card__download"
+                  disabled={downloading}
+                  title={
+                    downloading
+                      ? downloadProgress ?? "Downloading…"
+                      : "Download for offline"
+                  }
+                  aria-label={
+                    downloading
+                      ? downloadProgress ?? "Downloading"
+                      : "Download for offline"
+                  }
+                  onClick={() => void onDownload?.(pack)}
+                >
+                  <svg
+                    className="pack-card__download-icon"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fill="currentColor"
+                      d="M12 3a1 1 0 0 1 1 1v8.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42L11 12.59V4a1 1 0 0 1 1-1zm-7 14a1 1 0 0 1 1 1v1h12v-1a1 1 0 1 1 2 0v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1z"
+                    />
+                  </svg>
+                </button>
+              ) : null}
+              {showRemoveDownload ? (
+                <button
+                  type="button"
+                  className="pack-card__download"
+                  disabled={removing}
+                  title="Remove download"
+                  aria-label="Remove download"
+                  onClick={() => {
+                    setDeleteError(null);
+                    setConfirmRemove(true);
+                  }}
+                >
+                  <svg
+                    className="pack-card__download-icon"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fill="currentColor"
+                      d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                    />
+                  </svg>
+                </button>
+              ) : null}
+            </div>
           ) : null}
           {showDelete ? (
             <button

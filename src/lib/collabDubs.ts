@@ -98,19 +98,45 @@ function assignmentFromRow(row: CollabAssignmentRow): CollabLineAssignment {
 }
 
 export function packSnapshotFromDubPack(pack: DubPack): CollabPackSnapshot {
+  const normalized = normalizeCollabPackLines(pack);
   return {
-    lines: pack.lines.map((line) => ({
+    lines: normalized.lines.map((line) => ({
       id: line.id,
       speaker: line.speaker,
       text: line.text,
       startMs: line.startMs,
       endMs: line.endMs,
     })),
-    videoUrl: pack.videoUrl,
-    backingUrl: pack.backingTrackUrl,
-    thumbnailUrl: pack.thumbnailUrl,
-    thumbnailColor: pack.thumbnailColor,
+    videoUrl: normalized.videoUrl,
+    backingUrl: normalized.backingTrackUrl,
+    thumbnailUrl: normalized.thumbnailUrl,
+    thumbnailColor: normalized.thumbnailColor,
   };
+}
+
+/** Ensure every line has a stable id before assignment / collab creation. */
+export function normalizeCollabPackLines(pack: DubPack): DubPack {
+  const seen = new Set<string>();
+  const lines = pack.lines.map((line, index) => {
+    let id = line.id?.trim() || `line-${index + 1}`;
+    if (seen.has(id)) id = `${id}-${index + 1}`;
+    seen.add(id);
+    return { ...line, id };
+  });
+  return { ...pack, lines };
+}
+
+export function collabErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  return "Something went wrong.";
 }
 
 export function dubPackFromSnapshot(
@@ -208,13 +234,17 @@ async function buildCollabDetail(row: CollabDubRow): Promise<CollabDetail> {
   const supabase = createClient();
   const collab = collabFromRow(row);
 
-  const [{ data: inviteData }, { data: assignmentData }] = await Promise.all([
-    supabase.from("collab_invites").select("*").eq("collab_id", collab.id),
-    supabase
-      .from("collab_line_assignments")
-      .select("*")
-      .eq("collab_id", collab.id),
-  ]);
+  const [{ data: inviteData, error: inviteError }, { data: assignmentData, error: assignmentError }] =
+    await Promise.all([
+      supabase.from("collab_invites").select("*").eq("collab_id", collab.id),
+      supabase
+        .from("collab_line_assignments")
+        .select("*")
+        .eq("collab_id", collab.id),
+    ]);
+
+  if (inviteError) throw inviteError;
+  if (assignmentError) throw assignmentError;
 
   const invites = ((inviteData as CollabInviteRow[] | null) ?? []).map(
     inviteFromRow
@@ -258,7 +288,8 @@ export async function createCollabDub(input: {
   caption?: string;
 }): Promise<CollabDetail> {
   const supabase = createClient();
-  const snapshot = packSnapshotFromDubPack(input.pack);
+  const normalizedPack = normalizeCollabPackLines(input.pack);
+  const snapshot = packSnapshotFromDubPack(normalizedPack);
 
   if (snapshot.lines.some((line) => !input.assignments[line.id])) {
     throw new Error("Every line must be assigned to a player.");
@@ -626,4 +657,23 @@ export function getMyAssignments(
   userId: string
 ): CollabLineProgress[] {
   return detail.assignments.filter((a) => a.assigneeId === userId);
+}
+
+export async function countPendingInvites(userId: string): Promise<number> {
+  const supabase = createClient();
+  const { count, error } = await supabase
+    .from("collab_invites")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("status", "pending");
+
+  if (error) return 0;
+  return count ?? 0;
+}
+
+export async function listPendingInviteCollabs(
+  userId: string
+): Promise<CollabDetail[]> {
+  const joined = await listParticipantCollabs(userId);
+  return joined.filter((collab) => Boolean(getPendingInvitesForUser(collab, userId)));
 }
