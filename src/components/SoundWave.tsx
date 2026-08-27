@@ -48,31 +48,33 @@ export default function SoundWave({
         }`}
         aria-hidden="true"
       >
-        {bars.map((h, i) => {
-          const lit = !scrubbing || i <= playhead;
-          const isHead = scrubbing && i === playhead;
-          const height = !scrubbing
-            ? h
-            : lit
-              ? Math.max(reveal ? 10 : 4, h)
-              : reveal
-                ? 3
-                : h;
-          return (
-            <span
-              key={i}
-              className={[
-                "cv-waveform-bar",
-                lit ? "cv-waveform-bar--lit" : "cv-waveform-bar--dim",
-                isHead ? "cv-waveform-bar--head" : "",
-                active && !scrubbing ? "cv-waveform-bar-active" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              style={{ height: `${Math.max(3, Math.min(100, height))}%` }}
-            />
-          );
-        })}
+        <div className="cv-waveform__track">
+          {bars.map((h, i) => {
+            const lit = !scrubbing || i <= playhead;
+            const isHead = scrubbing && i === playhead;
+            const height = !scrubbing
+              ? h
+              : lit
+                ? Math.max(reveal ? 10 : 4, h)
+                : reveal
+                  ? 3
+                  : h;
+            return (
+              <span
+                key={i}
+                className={[
+                  "cv-waveform-bar",
+                  lit ? "cv-waveform-bar--lit" : "cv-waveform-bar--dim",
+                  isHead ? "cv-waveform-bar--head" : "",
+                  active && !scrubbing ? "cv-waveform-bar-active" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                style={{ height: `${Math.max(2, Math.min(100, height))}%` }}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );

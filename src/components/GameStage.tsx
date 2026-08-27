@@ -36,7 +36,9 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import GameStageChrome from "./GameStageChrome";
 import MainMenu from "./MainMenu";
 import PackBrowser from "./PackBrowser";
-import RecordingStudio from "./RecordingStudio";
+import RecordingStudio, {
+  type RecordingSaveControls,
+} from "./RecordingStudio";
 import DubPreview from "./DubPreview";
 import UploadPack from "./UploadPack";
 import CollabLineAssignment from "./collab/CollabLineAssignment";
@@ -138,6 +140,8 @@ export default function GameStage({
   const [search, setSearch] = useState("");
   const [hideNsfw, setHideNsfw] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [recordingSave, setRecordingSave] =
+    useState<RecordingSaveControls | null>(null);
   const [collabPack, setCollabPack] = useState<DubPack | null>(null);
   const [collabId, setCollabId] = useState<string | null>(null);
   const [skipSavedProgress, setSkipSavedProgress] = useState(false);
@@ -628,6 +632,9 @@ export default function GameStage({
           <GameStageChrome
             isFullscreen={isFullscreen}
             onToggleFullscreen={toggleFullscreen}
+            showSave={Boolean(recordingSave?.canSave || recordingSave?.saving)}
+            saving={Boolean(recordingSave?.saving)}
+            onSave={recordingSave?.onSave}
           />
         ) : null}
 
@@ -729,6 +736,7 @@ export default function GameStage({
               pack={activePack}
               mode="single"
               skipSavedProgress={skipSavedProgress}
+              onSaveControlsChange={setRecordingSave}
               onBack={() => {
                 void refreshPackProgress([activePack.id]);
                 if (mode === "packs") setPhase("pack-select");

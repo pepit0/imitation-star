@@ -3,6 +3,9 @@
 interface GameStageChromeProps {
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
+  showSave?: boolean;
+  saving?: boolean;
+  onSave?: () => void;
 }
 
 function FullscreenIcon({ exit }: { exit: boolean }) {
@@ -42,6 +45,9 @@ function FullscreenIcon({ exit }: { exit: boolean }) {
 export default function GameStageChrome({
   isFullscreen,
   onToggleFullscreen,
+  showSave = false,
+  saving = false,
+  onSave,
 }: GameStageChromeProps) {
   return (
     <div className="bg-white px-3 py-2 flex items-center justify-between border-b-3 border-black shrink-0">
@@ -58,14 +64,26 @@ export default function GameStageChrome({
           Recording in Session
         </span>
       </div>
-      <button
-        type="button"
-        onClick={onToggleFullscreen}
-        className="brutal-btn brutal-btn-sm bg-es-brand text-white px-3 py-1.5 text-[10px] shrink-0 inline-flex items-center gap-1.5"
-      >
-        <FullscreenIcon exit={isFullscreen} />
-        {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-      </button>
+      <div className="flex items-center gap-2 shrink-0">
+        {showSave && onSave ? (
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="brutal-btn brutal-btn-sm cv-recording__save-btn px-3 py-1.5 text-[10px] shrink-0"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={onToggleFullscreen}
+          className="brutal-btn brutal-btn-sm bg-es-brand text-white px-3 py-1.5 text-[10px] shrink-0 inline-flex items-center gap-1.5"
+        >
+          <FullscreenIcon exit={isFullscreen} />
+          {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+        </button>
+      </div>
     </div>
   );
 }

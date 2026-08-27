@@ -13,6 +13,7 @@ import {
 } from "@/lib/waveform";
 import SoundWave from "./SoundWave";
 import AppBackButton from "./AppBackButton";
+import LogoMark from "./LogoMark";
 import {
   clearPackProgress,
   loadPackProgress,
@@ -22,12 +23,19 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import ConfirmDialog from "./ConfirmDialog";
 
+export type RecordingSaveControls = {
+  canSave: boolean;
+  saving: boolean;
+  onSave: () => void;
+};
+
 interface RecordingStudioProps {
   pack: DubPack;
   mode: "single" | "multiplayer";
   skipSavedProgress?: boolean;
   onBack: () => void;
   onComplete: (recordings: RecordedLine[]) => void;
+  onSaveControlsChange?: (controls: RecordingSaveControls | null) => void;
 }
 
 export default function RecordingStudio({
@@ -36,6 +44,7 @@ export default function RecordingStudio({
   skipSavedProgress = false,
   onBack,
   onComplete,
+  onSaveControlsChange,
 }: RecordingStudioProps) {
   const { user } = useAuth();
   const online = useOnlineStatus();
@@ -69,6 +78,8 @@ export default function RecordingStudio({
   const recorderRef = useRef<AudioRecorder | null>(null);
   const levelRafRef = useRef<number | null>(null);
   const livePeaksRef = useRef<number[]>([]);
+  /** After a live take finishes, keep those peaks instead of re-deriving from the blob. */
+  const keepLivePeaksRef = useRef(false);
   const recordStartedAtRef = useRef(0);
   const userAudioRef = useRef<HTMLAudioElement | null>(null);
   const takeBackingRef = useRef<HTMLAudioElement | null>(null);
@@ -89,15 +100,7 @@ export default function RecordingStudio({
   const line: DubLine = pack.lines[lineIndex];
   const totalLines = pack.lines.length;
   const currentRecording = recordings.find((r) => r.lineId === line.id);
-  const modeEyebrow =
-    mode === "multiplayer" ? (
-      <>Multiplayer / Dub Stage</>
-    ) : (
-      <>
-        <span className="block">Single Player / Dub Stage</span>
-        <span className="block">Couch Party</span>
-      </>
-    );
+  const modeEyebrow = mode === "multiplayer" ? "Multiplayer" : "Singleplayer";
   const isLastLine = lineIndex === totalLines - 1;
 
   useEffect(() => {
@@ -229,10 +232,19 @@ export default function RecordingStudio({
 
   useEffect(() => {
     let cancelled = false;
-    setUserPeaks([]);
-    if (!currentRecording) return;
+    if (!currentRecording) {
+      setUserPeaks([]);
+      return;
+    }
 
-    extractWaveformPeaks(currentRecording.blob, { barCount: 56 }).then(
+    // Same bars the player just saw while recording — don't replace with a blob decode.
+    if (keepLivePeaksRef.current) {
+      keepLivePeaksRef.current = false;
+      return;
+    }
+
+    setUserPeaks([]);
+    extractWaveformPeaks(currentRecording.blob, { barCount: WAVE_BARS }).then(
       (peaks) => {
         if (!cancelled) setUserPeaks(peaks);
       }
@@ -240,7 +252,7 @@ export default function RecordingStudio({
     return () => {
       cancelled = true;
     };
-  }, [currentRecording]);
+  }, [currentRecording, WAVE_BARS]);
 
   const stopTakePlayback = useCallback(() => {
     if (takeWatchRef.current) {
@@ -419,22 +431,28 @@ export default function RecordingStudio({
   const startLevelMonitor = useCallback(
     (opts: { startSec: number; endSec: number; lineDurMs: number }) => {
       if (levelRafRef.current) cancelAnimationFrame(levelRafRef.current);
-      // Start empty — bars are painted as the playhead advances.
+      // Fixed-scale heights (0–100). Never re-normalize mid-take — that shrinks earlier bars.
       livePeaksRef.current = Array.from({ length: WAVE_BARS }, () => 0);
       setLivePeaks([...livePeaksRef.current]);
       setWaveProgress(0);
       recordStartedAtRef.current = performance.now();
-      // Don't wait on a useEffect — the first RAF can race otherwise.
       isRecordingRef.current = true;
+
+      /** Soft-clip mic level into the same visual range as a peak-normalized original wave. */
+      const micToBar = (raw: number) => {
+        if (raw <= 0) return 0;
+        // Asymptotic soft clip toward ~90 so loud peaks stay inside the frame.
+        const shaped = 90 * (1 - Math.exp(-(raw / 100) * 2.4));
+        return Math.max(4, Math.min(90, Math.round(shaped)));
+      };
 
       const paint = (p: number, level: number) => {
         const idx = Math.min(WAVE_BARS - 1, Math.floor(p * WAVE_BARS));
         const peaks = livePeaksRef.current;
-        const prev = peaks[idx] || 0;
-        peaks[idx] = Math.max(prev * 0.65, level);
-        // Fill any skipped slots so fast progress doesn't leave gaps.
+        peaks[idx] = Math.max(peaks[idx] || 0, level);
+        // Light fill for skipped buckets only — don't inflate quiet earlier bars.
         for (let i = 0; i < idx; i++) {
-          if (peaks[i] < 8) peaks[i] = Math.max(peaks[i], level * 0.35, 10);
+          if ((peaks[i] || 0) <= 0) peaks[i] = Math.max(4, Math.round(level * 0.2));
         }
         livePeaksRef.current = peaks;
         setLivePeaks(peaks.slice());
@@ -457,8 +475,7 @@ export default function RecordingStudio({
         p = Math.max(0, Math.min(1, p));
 
         const raw = recorderRef.current?.getRmsLevel() ?? 0;
-        const level = Math.max(8, Math.min(100, raw || 8));
-        paint(p, level);
+        paint(p, micToBar(raw));
 
         levelRafRef.current = requestAnimationFrame(tick);
       };
@@ -527,6 +544,14 @@ export default function RecordingStudio({
     try {
       const { blob, durationMs } = await recorderRef.current!.stop();
       stopLevelMonitor();
+
+      // Keep the exact bars drawn while recording (no late normalize / rescaling).
+      const locked = Array.from({ length: WAVE_BARS }, (_, i) =>
+        Math.max(0, Math.min(90, livePeaksRef.current[i] ?? 0))
+      );
+      keepLivePeaksRef.current = true;
+      setUserPeaks(locked);
+      setLivePeaks(locked);
       setIsRecording(false);
 
       const recorded: RecordedLine = {
@@ -547,7 +572,7 @@ export default function RecordingStudio({
       stopLevelMonitor();
       setWaveProgress(0);
     }
-  }, [clearRecordWatchers, hasBacking, line, stopLevelMonitor]);
+  }, [WAVE_BARS, clearRecordWatchers, hasBacking, line, stopLevelMonitor]);
 
   /** Stop mid-line without saving so the player can re-record immediately. */
   const cancelTake = useCallback(async () => {
@@ -701,7 +726,7 @@ export default function RecordingStudio({
       clearRecordWatchers();
       await recorderRef.current!.start();
       setIsRecording(true);
-      setUserPeaks([]);
+      // Keep prior take peaks until a full re-record finishes (cancel restores them).
 
       const lineDurMs = Math.max(400, line.endMs - line.startMs);
       const v = videoRef.current;
@@ -855,35 +880,51 @@ export default function RecordingStudio({
     !isPlayingTake &&
     !isProgressSaved();
 
+  useEffect(() => {
+    if (!onSaveControlsChange) return;
+    if (!canSaveProgress && !savingProgress) {
+      onSaveControlsChange(null);
+      return;
+    }
+    onSaveControlsChange({
+      canSave: canSaveProgress,
+      saving: savingProgress,
+      onSave: () => {
+        void handleSaveProgress();
+      },
+    });
+  }, [
+    canSaveProgress,
+    savingProgress,
+    handleSaveProgress,
+    onSaveControlsChange,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      onSaveControlsChange?.(null);
+    };
+  }, [onSaveControlsChange]);
+
   return (
-    <div className="cv-recording flex flex-col h-full min-h-0 overflow-hidden bg-es-screen text-white">
+    <div className="cv-recording flex flex-col h-full min-h-0 overflow-hidden">
       <div className="app-stage-topbar px-3 sm:px-4 py-2 border-b-3 border-black shrink-0">
-        <div className="flex items-start gap-2 sm:gap-3">
+        <div className="cv-recording__topbar flex items-center gap-2 sm:gap-3">
           <AppBackButton onClick={requestLeave} />
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] uppercase tracking-wider text-es-brand">
-              {modeEyebrow}
-            </p>
-            <h2 className="font-title text-sm sm:text-lg text-es-yellow truncate normal-case">
+            <p className="cv-recording__eyebrow">{modeEyebrow}</p>
+            <h2 className="cv-recording__pack-title font-title text-sm sm:text-lg truncate normal-case">
               {pack.title}
             </h2>
           </div>
-          <p className="text-[10px] sm:text-xs text-es-text-secondary uppercase shrink-0 pt-1">
-            Line {lineIndex + 1} / {totalLines}
-          </p>
-          {canSaveProgress ? (
-            <button
-              type="button"
-              className="brutal-btn brutal-btn-sm bg-es-blue text-white shrink-0 text-[10px] px-2 py-1"
-              disabled={savingProgress}
-              onClick={() => void handleSaveProgress()}
-            >
-              {savingProgress ? "Saving…" : "Save"}
-            </button>
-          ) : null}
+          <div className="cv-recording__topbar-end shrink-0">
+            <p className="cv-recording__line-count sm:text-xs">
+              Line {lineIndex + 1} / {totalLines}
+            </p>
+          </div>
         </div>
         {mode === "single" && savedProgressAt && isProgressSaved() ? (
-          <p className="text-[10px] text-es-phosphor mt-1 normal-case">
+          <p className="cv-recording__saved-note">
             {recordings.length} line{recordings.length === 1 ? "" : "s"} saved
             {user && online ? " to your profile" : " on this device"}
           </p>
@@ -924,32 +965,26 @@ export default function RecordingStudio({
             {!hasVideo ? (
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-black/10" />
             ) : null}
-            <div className="cv-recording__stage-overlay pointer-events-none absolute inset-x-0 bottom-0 p-3 sm:p-4 bg-gradient-to-t from-black/80 to-transparent">
-              <p className="text-[10px] text-es-phosphor uppercase tracking-widest mb-0.5">
-                {hasVideo ? "Video line" : "Scene Preview"}
-              </p>
-              <p className="font-title text-sm text-white truncate">
-                {pack.title}
-              </p>
-            </div>
-            <span className="absolute top-2 left-2 brutal-border bg-es-error text-white text-[10px] px-2 py-0.5 uppercase">
+            <span className="cv-recording__speaker absolute top-2 left-2 brutal-border text-white text-[10px] px-2 py-0.5 uppercase">
               {line.speaker}
             </span>
-            <span className="absolute top-2 right-2 text-[9px] text-white/60 uppercase tracking-wider">
-              IMITATION.STAR
-            </span>
+            <div className="cv-recording__brand absolute top-2.5 right-2.5 flex items-center gap-1.5 sm:gap-2 pointer-events-none z-[2]">
+              <LogoMark
+                className="w-5 h-5 sm:w-6 sm:h-6"
+                title="Imitation Star"
+              />
+              <span className="cv-recording__brand-title">Imitation Star</span>
+            </div>
           </div>
         </div>
 
-        <div className="w-full lg:w-[min(44%,360px)] flex-1 lg:flex-none lg:shrink-0 flex flex-col min-h-0 bg-es-bg-secondary border-l-0 lg:border-l-4 border-es-yellow">
+        <div className="cv-recording__sidebar w-full lg:w-[min(44%,360px)] flex-1 lg:flex-none lg:shrink-0 flex flex-col min-h-0 border-l-0 lg:border-l-4">
           <div className="flex-1 p-4 sm:p-5 flex flex-col min-h-0 overflow-y-auto">
-            <p className="text-[10px] uppercase tracking-wider text-es-brand mb-2">
-              Your Line
-            </p>
-            <p className="font-title text-lg sm:text-2xl leading-snug normal-case text-white">
+            <p className="cv-recording__label">Your Line</p>
+            <p className="cv-recording__script font-title text-lg sm:text-2xl leading-snug normal-case">
               {line.text}
             </p>
-            <p className="mt-2 text-[10px] text-es-text-secondary normal-case">
+            <p className="cv-recording__hint">
               Replay the original, record your dub, then play your take back before moving on.
             </p>
 
@@ -977,7 +1012,7 @@ export default function RecordingStudio({
                         type="button"
                         onClick={() => void handlePlayTake()}
                         disabled={isPlayingRef}
-                        className="brutal-btn brutal-btn-sm bg-es-yellow text-black px-2 py-0.5 text-[10px] shrink-0"
+                        className="brutal-btn brutal-btn-sm cv-recording__play-take px-2 py-0.5 text-[10px] shrink-0"
                       >
                         {isPlayingTake ? "■ Stop" : "▶ Play take"}
                       </button>
@@ -994,7 +1029,7 @@ export default function RecordingStudio({
                   reveal={isRecording}
                 />
                 {currentRecording && hasBacking && !isRecording ? (
-                  <p className="mt-1 text-[9px] text-es-text-secondary normal-case">
+                  <p className="cv-recording__hint mt-1 text-[9px]">
                     Playback mixes your take with the backing track (no dialogue).
                   </p>
                 ) : null}
@@ -1002,7 +1037,7 @@ export default function RecordingStudio({
             </div>
 
             <div
-              className={`mt-3 brutal-border bg-black/60 p-2 min-h-[3.35rem] ${
+              className={`cv-recording__meter mt-3 brutal-border p-2 min-h-[3.35rem] ${
                 isRecording ? "" : "invisible pointer-events-none"
               }`}
               aria-hidden={!isRecording}
@@ -1013,9 +1048,9 @@ export default function RecordingStudio({
                   Recording
                 </span>
               </div>
-              <div className="h-2 bg-es-bg-tertiary brutal-border overflow-hidden">
+              <div className="cv-recording__meter-track h-2 brutal-border overflow-hidden">
                 <div
-                  className="h-full bg-es-error transition-all duration-100"
+                  className="cv-recording__meter-fill h-full transition-all duration-100"
                   style={{ width: `${isRecording ? micLevel : 0}%` }}
                 />
               </div>
@@ -1024,13 +1059,13 @@ export default function RecordingStudio({
         </div>
       </div>
 
-      <div className="shrink-0 border-t-3 border-black bg-es-darker px-2 sm:px-3 py-2 safe-bottom">
+      <div className="cv-recording__footer shrink-0 border-t-3 border-black px-2 sm:px-3 py-2 safe-bottom">
         <div className="grid grid-cols-3 gap-2">
           <button
             type="button"
             onClick={handleReplay}
             disabled={isRecording || isPlayingTake}
-            className="cv-studio-btn bg-es-bg-tertiary text-white"
+            className="cv-studio-btn cv-studio-btn--secondary"
           >
             <span className="cv-studio-btn-icon" aria-hidden="true">
               ▶
@@ -1049,10 +1084,8 @@ export default function RecordingStudio({
             type="button"
             onClick={() => void handleRecord()}
             disabled={isPlayingTake}
-            className={`cv-studio-btn ${
-              isRecording
-                ? "bg-es-error text-white recording-pulse"
-                : "bg-es-warm text-black"
+            className={`cv-studio-btn cv-studio-btn--record ${
+              isRecording ? "recording-pulse" : ""
             }`}
           >
             <span className="cv-studio-btn-icon" aria-hidden="true">
@@ -1078,7 +1111,7 @@ export default function RecordingStudio({
             type="button"
             onClick={handleNext}
             disabled={!currentRecording || isRecording || isPlayingTake}
-            className="cv-studio-btn bg-es-bg-tertiary text-es-text-secondary disabled:opacity-45"
+            className="cv-studio-btn cv-studio-btn--next"
           >
             <span className="cv-studio-btn-title">
               {isLastLine ? "Finish →" : "Next →"}
@@ -1093,9 +1126,7 @@ export default function RecordingStudio({
           </button>
         </div>
 
-        <p className="text-[10px] text-center text-es-text-secondary mt-2 normal-case px-1">
-          {status}
-        </p>
+        <p className="cv-recording__status">{status}</p>
       </div>
 
       {leaveOpen ? (

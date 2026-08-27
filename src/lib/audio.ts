@@ -59,8 +59,8 @@ export class AudioRecorder {
       await this.audioContext.resume();
     }
     this.analyser = this.audioContext.createAnalyser();
-    this.analyser.fftSize = 512;
-    this.analyser.smoothingTimeConstant = 0.55;
+    this.analyser.fftSize = 2048;
+    this.analyser.smoothingTimeConstant = 0.18;
     this.timeDomain = new Uint8Array(this.analyser.fftSize);
     this.sourceNode = this.audioContext.createMediaStreamSource(this.stream);
     this.sourceNode.connect(this.analyser);
@@ -83,8 +83,8 @@ export class AudioRecorder {
       if (a > peak) peak = a;
     }
     const rms = Math.sqrt(sum / this.timeDomain.length);
-    // Bias toward peaks so spoken syllables read clearly on the take wave.
-    return Math.min(100, Math.max(0, rms * 520 + peak * 55));
+    // Peak-biased 0–100; keep headroom so bars don’t peg the top of the frame.
+    return Math.min(100, Math.max(0, rms * 480 + peak * 70));
   }
 
   stop(): Promise<{ blob: Blob; durationMs: number }> {
