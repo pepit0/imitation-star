@@ -25,6 +25,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.imitationstar.app",
+      "entitlements": {
+        "aps-environment": "production"
+      },
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Imitation Star needs the microphone to record your dubs.",
         "NSCameraUsageDescription": "Imitation Star may use the camera for profile photos.",
